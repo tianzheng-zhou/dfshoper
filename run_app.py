@@ -26,6 +26,17 @@ from pynput.keyboard import GlobalHotKeys
 import numpy as np
 import cv2
 
+DEBUG = False
+
+# 等待时间宏变量定义
+WAIT_REFRESH_ITEM = 0.12  # 点击货物后的等待时间
+WAIT_CLICK_MAX_AMOUNT = 0.12  # 点击最大数量按钮后的等待时间
+WAIT_AFTER_BUY = 0.5  # 购买后的等待时间
+WAIT_AFTER_ESC = 0.10  # 按ESC后的等待时间
+
+ENABLE_TESSERACT = False
+ENABLE_PADDLEOCR = False
+ENABLE_EASYOCR = True
 
 # ============================= OCR Manager (GPU first) =============================
 class OCRManager:
@@ -48,39 +59,48 @@ class OCRManager:
 
     def _init_ocr(self):
         # Try Tesseract OCR (最高优先级)
-        try:
-            import pytesseract
-            # 明确指定Tesseract的安装路径
-            pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # 修改为你的实际安装路径
+        if ENABLE_TESSERACT:
+            try:
+                import pytesseract
+                # 明确指定Tesseract的安装路径
+                pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # 修改为你的实际安装路径
 
-            # 测试Tesseract是否可用
-            test_text = pytesseract.image_to_string(np.zeros((10, 10), dtype=np.uint8))
-            self.tesseract = pytesseract
-            self.backend = "tesseract"
-            self.logger("OCR: Tesseract OCR 已启用")
-            return
-        except Exception as e:
-            self.logger(f"OCR: Tesseract OCR 不可用: {e}")
+                # 测试Tesseract是否可用
+                test_text = pytesseract.image_to_string(np.zeros((10, 10), dtype=np.uint8))
+                self.tesseract = pytesseract
+                self.backend = "tesseract"
+                self.logger("OCR: Tesseract OCR 已启用")
+                return
+            except Exception as e:
+                self.logger(f"OCR: Tesseract OCR 不可用: {e}")
+        else:
+            self.logger("OCR: Tesseract OCR 已禁用")
 
         # Try PaddleOCR GPU (次高优先级)
-        try:
-            from paddleocr import PaddleOCR
-            self.paddle = PaddleOCR(use_angle_cls=False, lang='en')
-            self.backend = "paddle"
-            self.logger("OCR: PaddleOCR(GPU) 已启用")
-            return
-        except Exception as e:
-            self.logger(f"OCR: PaddleOCR(GPU) 不可用: {e}")
+        if ENABLE_PADDLEOCR:
+            try:
+                from paddleocr import PaddleOCR
+                self.paddle = PaddleOCR(use_angle_cls=False, lang='en')
+                self.backend = "paddle"
+                self.logger("OCR: PaddleOCR(GPU) 已启用")
+                return
+            except Exception as e:
+                self.logger(f"OCR: PaddleOCR(GPU) 不可用: {e}")
+        else:
+            self.logger("OCR: PaddleOCR(GPU) 已禁用")
 
         # Try EasyOCR GPU (第三优先级)
-        try:
-            import easyocr
-            self.easy = easyocr.Reader(['en'], gpu=True)  # loads model once
-            self.backend = "easyocr"
-            self.logger("OCR: EasyOCR(GPU) 已启用")
-            return
-        except Exception as e:
-            self.logger(f"OCR: EasyOCR(GPU) 不可用: {e}")
+        if ENABLE_EASYOCR:
+            try:
+                import easyocr
+                self.easy = easyocr.Reader(['en'], gpu=True)  # loads model once
+                self.backend = "easyocr"
+                self.logger("OCR: EasyOCR(GPU) 已启用")
+                return
+            except Exception as e:
+                self.logger(f"OCR: EasyOCR(GPU) 不可用: {e}")
+        else:
+            self.logger("OCR: EasyOCR(GPU) 已禁用")
 
         # Fallback CPU
         try:
@@ -143,7 +163,9 @@ class OCRManager:
         roi = self._preprocess(img_bgr, scale=2.0, binarize=True)
 
         # 保存预处理后的图像用于调试
-        self._save_debug_image(roi)
+        global DEBUG
+        if DEBUG:
+            self._save_debug_image(roi)
 
         if self.backend == "tesseract" and self.tesseract is not None:
             # 为Tesseract配置自定义选项，优化数字识别
@@ -475,14 +497,14 @@ class Mode1Worker(QtCore.QThread):
         ix, iy = self.cfg.mode1_item_click_coord
         if ix or iy:
             Screen.click(ix, iy)
-            time.sleep(0.12)
+            time.sleep(WAIT_REFRESH_ITEM)
 
     def _click_max_amount(self):
         x, y = self.cfg.max_amount_button
         clicks = max(1, int(self.cfg.max_amount_clicks))
         for _ in range(clicks):
             Screen.click(x, y)
-            time.sleep(0.12)
+            time.sleep(WAIT_CLICK_MAX_AMOUNT)
 
     def run(self):
         try:
@@ -499,12 +521,15 @@ class Mode1Worker(QtCore.QThread):
                 img1 = self.screen.grab_region((r1.x, r1.y, r1.w, r1.h))
 
                 # 添加调试代码：保存截图以便查看
-                import cv2
-                cv2.imwrite("price1_debug.png", img1)
-                self.log.emit(f"已保存价格1区域截图到 price1_debug.png")
+                # 全局DEBUG开关
+                global DEBUG
+                if DEBUG:
+                    import cv2
+                    cv2.imwrite("price1_debug.png", img1)
+                    self.log.emit(f"已保存价格1区域截图到 price1_debug.png")
 
-                # 添加调试代码：显示区域信息
-                self.log.emit(f"价格1区域: x={r1.x}, y={r1.y}, w={r1.w}, h={r1.h}")
+                    # 添加调试代码：显示区域信息
+                    self.log.emit(f"价格1区域: x={r1.x}, y={r1.y}, w={r1.w}, h={r1.h}")
 
                 p1 = self.ocr.read_price_value(img1)
                 if p1 is not None:
@@ -536,12 +561,12 @@ class Mode1Worker(QtCore.QThread):
                         Screen.click(bx, by)
                         self.log.emit(f"✅ 触发购买！价格2={p2} 阈值={self.threshold}")
                         bought = True
-                        time.sleep(0.5)
+                        time.sleep(WAIT_AFTER_BUY)
 
                 # 4) 若本轮未买成：按 Esc → 再点货物（立即刷新到下一轮）
                 if not bought:
                     Screen.press_esc()
-                    time.sleep(0.10)
+                    time.sleep(WAIT_AFTER_ESC)
                     if self.cfg.mode1_refresh_immediate:
                         # 立即刷新，不等间隔
                         self._refresh_item()
