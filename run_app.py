@@ -29,10 +29,10 @@ import cv2
 DEBUG = False
 
 # 等待时间宏变量定义
-WAIT_REFRESH_ITEM = 0.12  # 点击货物后的等待时间
-WAIT_CLICK_MAX_AMOUNT = 0.12  # 点击最大数量按钮后的等待时间
-WAIT_AFTER_BUY = 0.5  # 购买后的等待时间
-WAIT_AFTER_ESC = 0.10  # 按ESC后的等待时间
+WAIT_REFRESH_ITEM = 0  # 点击货物后的等待时间
+WAIT_CLICK_MAX_AMOUNT = 0  # 点击最大数量按钮后的等待时间
+WAIT_AFTER_BUY = 0  # 购买后的等待时间
+WAIT_AFTER_ESC = 0  # 按ESC后的等待时间
 
 ENABLE_TESSERACT = False
 ENABLE_PADDLEOCR = False
