@@ -15,7 +15,7 @@ from PySide6.QtGui import QColor, QCursor
 from PySide6.QtWidgets import (
     QApplication, QWidget, QMainWindow, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
     QGridLayout, QLineEdit, QFileDialog, QTextEdit, QSpinBox, QColorDialog, QTabWidget,
-    QMessageBox, QCheckBox
+    QMessageBox, QCheckBox, QComboBox
 )
 
 # --- Screen / Input / Imaging ---
@@ -461,23 +461,73 @@ class ConfigManager:
         self.path = path
         self.logger = logger
         self.config = AppConfig()
+        self.all_configs = {DEFAULT_CONFIG_PATH: self.config}  # 存储所有加载的配置文件
+        self.current_config_name = DEFAULT_CONFIG_PATH
 
     def load(self):
         if os.path.exists(self.path):
             with open(self.path, "r", encoding="utf-8") as f:
                 d = json.load(f)
             self.config = AppConfig.from_json(d)
+            self.all_configs[self.path] = self.config
+            self.current_config_name = self.path
             self.logger(f"配置已读取：{self.path}")
         else:
             self.logger("未发现配置文件，将在配置完成后自动保存。")
+
+    def load_all_configs(self):
+        """扫描并加载当前目录下所有的JSON配置文件"""
+        # 确保目录存在
+        config_dir = os.path.dirname(self.path) if os.path.dirname(self.path) else '.'
+        
+        try:
+            # 获取目录下所有的JSON文件
+            json_files = [f for f in os.listdir(config_dir) 
+                         if f.endswith('.json') and os.path.isfile(os.path.join(config_dir, f))]
+            
+            # 加载每个JSON文件
+            for json_file in json_files:
+                file_path = os.path.join(config_dir, json_file)
+                try:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        d = json.load(f)
+                    config = AppConfig.from_json(d)
+                    self.all_configs[json_file] = config
+                    self.logger(f"已加载配置文件：{json_file}")
+                except Exception as e:
+                    self.logger(f"加载配置文件 {json_file} 失败：{str(e)}")
+            
+            # 如果有配置文件，默认使用第一个
+            if json_files:
+                self.current_config_name = json_files[0]
+                self.config = self.all_configs[self.current_config_name]
+                self.path = os.path.join(config_dir, self.current_config_name)
+                self.logger(f"当前使用配置：{self.current_config_name}")
+        except Exception as e:
+            self.logger(f"扫描配置文件失败：{str(e)}")
 
     def save(self):
         with open(self.path, "w", encoding="utf-8") as f:
             json.dump(self.config.to_json(), f, indent=2, ensure_ascii=False)
         self.logger(f"配置已保存：{self.path}")
+        # 更新配置缓存
+        self.all_configs[self.current_config_name] = self.config
+
+    def switch_config(self, config_name):
+        """切换到指定的配置文件"""
+        if config_name in self.all_configs:
+            self.current_config_name = config_name
+            self.config = self.all_configs[config_name]
+            self.path = os.path.join(os.path.dirname(self.path) if os.path.dirname(self.path) else '.', config_name)
+            self.logger(f"已切换到配置：{config_name}")
+            return True
+        return False
+
+    def get_config_names(self):
+        """获取所有已加载的配置文件名列表"""
+        return list(self.all_configs.keys())
 
 
-# ============================= Worker Threads =============================
 class Mode1Worker(QtCore.QThread):
     log = Signal(str)
     finished = Signal()
@@ -782,6 +832,16 @@ class MainWindow(QMainWindow):
 
         # Global controls
         topbar = QHBoxLayout()
+        
+        # 配置文件选择下拉框
+        self.config_selector = QComboBox()
+        self.config_selector.addItems(self.cfg_mgr.get_config_names())
+        if self.cfg_mgr.current_config_name in self.cfg_mgr.get_config_names():
+            self.config_selector.setCurrentText(self.cfg_mgr.current_config_name)
+        self.config_selector.currentTextChanged.connect(self._on_config_selected)
+        topbar.addWidget(QLabel("配置文件："))
+        topbar.addWidget(self.config_selector)
+        
         self.btn_load = QPushButton("读取配置")
         self.btn_save = QPushButton("保存配置")
         self.btn_load.clicked.connect(self._on_load)
@@ -1083,7 +1143,6 @@ class MainWindow(QMainWindow):
                 self._stop_all()
                 return True
         return super().eventFilter(obj, event)
-
     def _fill_focused_coord(self, x, y):
         w = QApplication.focusWidget()
         if isinstance(w, QLineEdit):
@@ -1138,6 +1197,24 @@ class MainWindow(QMainWindow):
                 self.spin_max_clicks.setValue(self.cfg_mgr.config.max_amount_clicks)
         except Exception as e:
             self._log("读取失败：" + str(e))
+            self._log(traceback.format_exc())
+
+    def _on_config_selected(self, config_name):
+        try:
+            # 设置当前配置名称并加载配置
+            self.cfg_mgr.current_config_name = config_name
+            self.cfg_mgr.load()
+            # 刷新UI以反映配置更改
+            self.spin_interval.setValue(self.cfg_mgr.config.scan_interval_ms)
+            self.mode2_threshold.setText(str(self.cfg_mgr.config.mode2_threshold))
+            self.mode2_x.setText(str(self.cfg_mgr.config.mode2_price_coord[0]))
+            self.mode2_y.setText(str(self.cfg_mgr.config.mode2_price_coord[1]))
+            # 模式1相关配置
+            self.cb_refresh_immediate.setChecked(self.cfg_mgr.config.mode1_refresh_immediate)
+            self.spin_max_clicks.setValue(self.cfg_mgr.config.max_amount_clicks)
+            self._log(f"已加载配置：{config_name}")
+        except Exception as e:
+            self._log(f"加载配置失败：{e}")
             self._log(traceback.format_exc())
 
     def _on_save(self):
