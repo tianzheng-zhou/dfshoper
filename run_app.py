@@ -466,12 +466,53 @@ class ConfigManager:
 
     def load(self):
         if os.path.exists(self.path):
-            with open(self.path, "r", encoding="utf-8") as f:
-                d = json.load(f)
-            self.config = AppConfig.from_json(d)
-            self.all_configs[self.path] = self.config
-            self.current_config_name = self.path
-            self.logger(f"配置已读取：{self.path}")
+            try:
+                # 检查文件大小，避免空文件
+                if os.path.getsize(self.path) == 0:
+                    self.logger(f"配置文件为空：{self.path}")
+                    # 使用默认配置并保存到文件
+                    self.config = AppConfig()
+                    # 修改这里，只使用文件名作为键
+                    config_name = os.path.basename(self.path)
+                    self.all_configs[config_name] = self.config
+                    self.current_config_name = config_name
+                    # 将默认配置保存到空文件中
+                    self.save()
+                    return
+                
+                with open(self.path, "r", encoding="utf-8") as f:
+                    try:
+                        d = json.load(f)
+                        self.config = AppConfig.from_json(d)
+                        # 修改这里，只使用文件名作为键
+                        config_name = os.path.basename(self.path)
+                        self.all_configs[config_name] = self.config
+                        self.current_config_name = config_name
+                        self.logger(f"配置已读取：{self.path}")
+                    except json.JSONDecodeError as e:
+                        self.logger(f"配置文件格式错误：{self.path}，错误：{str(e)}")
+                        # 使用默认配置
+                        self.config = AppConfig()
+                        # 修改这里，只使用文件名作为键
+                        config_name = os.path.basename(self.path)
+                        self.all_configs[config_name] = self.config
+                        self.current_config_name = config_name
+                    except Exception as e:
+                        self.logger(f"读取配置文件失败：{self.path}，错误：{str(e)}")
+                        # 使用默认配置
+                        self.config = AppConfig()
+                        # 修改这里，只使用文件名作为键
+                        config_name = os.path.basename(self.path)
+                        self.all_configs[config_name] = self.config
+                        self.current_config_name = config_name
+            except Exception as e:
+                self.logger(f"打开配置文件失败：{self.path}，错误：{str(e)}")
+                # 使用默认配置
+                self.config = AppConfig()
+                # 修改这里，只使用文件名作为键
+                config_name = os.path.basename(self.path)
+                self.all_configs[config_name] = self.config
+                self.current_config_name = config_name
         else:
             self.logger("未发现配置文件，将在配置完成后自动保存。")
 
@@ -560,6 +601,7 @@ class Mode1Worker(QtCore.QThread):
         try:
             self.log.emit("模式1：开始监控...")
             interval = max(30, int(self.cfg.scan_interval_ms)) / 1000.0
+            refresh_count = 0  # 添加刷新计数器
             while not self.stop_flag.is_set():
                 bought = False
 
@@ -612,6 +654,7 @@ class Mode1Worker(QtCore.QThread):
                         self.log.emit(f"✅ 触发购买！价格2={p2} 阈值={self.threshold}")
                         bought = True
                         time.sleep(WAIT_AFTER_BUY)
+                        refresh_count = 0  # 购买成功后重置计数器
 
                 # 4) 若本轮未买成：按 Esc → 再点货物（立即刷新到下一轮）
                 if not bought:
@@ -620,6 +663,11 @@ class Mode1Worker(QtCore.QThread):
                     if self.cfg.mode1_refresh_immediate:
                         # 立即刷新，不等间隔
                         self._refresh_item()
+                        refresh_count += 1  # 增加刷新计数
+                        # 检查是否需要插入等待
+                        if refresh_count % 300 == 0:
+                            self.log.emit("已连续刷新300次，插入3秒等待...")
+                            time.sleep(3.0)
                         # 直接继续下一轮
                         continue
 
@@ -836,18 +884,23 @@ class MainWindow(QMainWindow):
         # 配置文件选择下拉框
         self.config_selector = QComboBox()
         self.config_selector.addItems(self.cfg_mgr.get_config_names())
+        # 增加下拉框的最小宽度，防止文件名显示不全
+        self.config_selector.setMinimumWidth(200)  # 设置为合适的宽度值
         if self.cfg_mgr.current_config_name in self.cfg_mgr.get_config_names():
             self.config_selector.setCurrentText(self.cfg_mgr.current_config_name)
         self.config_selector.currentTextChanged.connect(self._on_config_selected)
         topbar.addWidget(QLabel("配置文件："))
         topbar.addWidget(self.config_selector)
         
-        self.btn_load = QPushButton("读取配置")
+        self.btn_load = QPushButton("打开配置文件")
         self.btn_save = QPushButton("保存配置")
+        self.btn_save_as = QPushButton("配置另存为")
         self.btn_load.clicked.connect(self._on_load)
         self.btn_save.clicked.connect(self._on_save)
+        self.btn_save_as.clicked.connect(self._on_save_as)
         topbar.addWidget(self.btn_load)
         topbar.addWidget(self.btn_save)
+        topbar.addWidget(self.btn_save_as)
         topbar.addStretch()
 
         container = QWidget()
@@ -906,6 +959,10 @@ class MainWindow(QMainWindow):
             h.addWidget(pb);
             h.addWidget(btn_load);
             h.addWidget(btn_save)
+            
+            # 自动加载配置值到输入框
+            load_vals()
+            
             return row
 
         def region_row(label_text, getter, setter):
@@ -957,6 +1014,9 @@ class MainWindow(QMainWindow):
             h.addWidget(btn_pick);
             h.addWidget(btn_load);
             h.addWidget(btn_apply)
+            
+            # 自动加载配置值到输入框
+            load_vals()
             return row
 
         # 基础坐标
@@ -1187,6 +1247,19 @@ class MainWindow(QMainWindow):
             if path:
                 self.cfg_mgr.path = path
                 self.cfg_mgr.load()
+                
+                # 1. 更新ConfigManager的all_configs字典，将新配置添加进去
+                config_name = os.path.basename(path)
+                self.cfg_mgr.all_configs[config_name] = self.cfg_mgr.config
+                self.cfg_mgr.current_config_name = config_name
+                
+                # 2. 清空下拉框并重新填充所有配置名称
+                self.config_selector.clear()
+                self.config_selector.addItems(self.cfg_mgr.get_config_names())
+                
+                # 3. 选中当前加载的配置
+                self.config_selector.setCurrentText(config_name)
+                
                 # refresh UI reflect critical fields
                 self.spin_interval.setValue(self.cfg_mgr.config.scan_interval_ms)
                 self.mode2_threshold.setText(str(self.cfg_mgr.config.mode2_threshold))
@@ -1195,23 +1268,35 @@ class MainWindow(QMainWindow):
                 # 模式1新增字段
                 self.cb_refresh_immediate.setChecked(self.cfg_mgr.config.mode1_refresh_immediate)
                 self.spin_max_clicks.setValue(self.cfg_mgr.config.max_amount_clicks)
+                
+                self._log(f"已成功加载配置文件：{path}")
         except Exception as e:
             self._log("读取失败：" + str(e))
             self._log(traceback.format_exc())
 
     def _on_config_selected(self, config_name):
         try:
-            # 设置当前配置名称并加载配置
-            self.cfg_mgr.current_config_name = config_name
-            self.cfg_mgr.load()
-            # 刷新UI以反映配置更改
-            self.spin_interval.setValue(self.cfg_mgr.config.scan_interval_ms)
-            self.mode2_threshold.setText(str(self.cfg_mgr.config.mode2_threshold))
-            self.mode2_x.setText(str(self.cfg_mgr.config.mode2_price_coord[0]))
-            self.mode2_y.setText(str(self.cfg_mgr.config.mode2_price_coord[1]))
-            # 模式1相关配置
-            self.cb_refresh_immediate.setChecked(self.cfg_mgr.config.mode1_refresh_immediate)
-            self.spin_max_clicks.setValue(self.cfg_mgr.config.max_amount_clicks)
+            # 使用switch_config方法来正确切换配置
+            if self.cfg_mgr.switch_config(config_name):
+                # 刷新UI以反映配置更改
+                self.spin_interval.setValue(self.cfg_mgr.config.scan_interval_ms)
+                self.mode2_threshold.setText(str(self.cfg_mgr.config.mode2_threshold))
+                self.mode2_x.setText(str(self.cfg_mgr.config.mode2_price_coord[0]))
+                self.mode2_y.setText(str(self.cfg_mgr.config.mode2_price_coord[1]))
+                # 模式1相关配置
+                self.cb_refresh_immediate.setChecked(self.cfg_mgr.config.mode1_refresh_immediate)
+                self.spin_max_clicks.setValue(self.cfg_mgr.config.max_amount_clicks)
+                
+                # 刷新配置标签页以自动加载坐标和区域值
+                # 首先获取当前选中的标签页索引
+                current_tab_index = self.tabs.currentIndex()
+                # 移除并重新添加配置标签页
+                self.tabs.removeTab(0)  # 配置标签页通常是第一个
+                self.tabs.insertTab(0, self._build_config_tab(), "配置/坐标")
+                # 如果之前选中的是配置标签页，则重新选中它
+                if current_tab_index == 0:
+                    self.tabs.setCurrentIndex(0)
+                
             self._log(f"已加载配置：{config_name}")
         except Exception as e:
             self._log(f"加载配置失败：{e}")
@@ -1230,6 +1315,55 @@ class MainWindow(QMainWindow):
             self.cfg_mgr.save()
         except Exception as e:
             self._log("保存失败：" + str(e))
+            self._log(traceback.format_exc())
+
+    def _on_save_as(self):
+        try:
+            # 更新配置对象中的值
+            try:
+                self.cfg_mgr.config.mode2_threshold = float(self.mode2_threshold.text() or "0")
+            except:
+                pass
+            try:
+                self.cfg_mgr.config.scan_interval_ms = int(self.spin_interval.value())
+            except:
+                pass
+
+            # 打开文件保存对话框
+            options = QFileDialog.Options()
+            # 默认保存到当前目录，并使用当前配置文件名作为默认文件名
+            current_dir = os.path.dirname(self.cfg_mgr.path) if os.path.dirname(self.cfg_mgr.path) else '.'
+            default_filename = os.path.basename(self.cfg_mgr.path) if self.cfg_mgr.path else "config.json"
+            
+            path, _ = QFileDialog.getSaveFileName(
+                self, "配置另存为", 
+                os.path.join(current_dir, default_filename),
+                "JSON Files (*.json);;All Files (*)", options=options
+            )
+            
+            if path:
+                # 确保文件扩展名为.json
+                if not path.endswith('.json'):
+                    path += '.json'
+                
+                # 保存配置到新路径
+                original_path = self.cfg_mgr.path
+                self.cfg_mgr.path = path
+                self.cfg_mgr.save()
+                
+                # 更新配置管理器
+                config_name = os.path.basename(path)
+                self.cfg_mgr.all_configs[config_name] = self.cfg_mgr.config
+                self.cfg_mgr.current_config_name = config_name
+                
+                # 刷新配置选择下拉框
+                self.config_selector.clear()
+                self.config_selector.addItems(self.cfg_mgr.get_config_names())
+                self.config_selector.setCurrentText(config_name)
+                
+                self._log(f"配置已另存为：{path}")
+        except Exception as e:
+            self._log(f"配置另存为失败：{e}")
             self._log(traceback.format_exc())
 
     def _start_mode1(self):
