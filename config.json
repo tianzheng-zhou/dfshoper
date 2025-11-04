@@ -12,24 +12,24 @@
     359
   ],
   "buy_button": [
-    1285,
-    686
+    1700,
+    850
   ],
   "max_amount_button": [
-    1429,
-    672
+    1777,
+    777
   ],
   "price1_region": [
-    1277,
-    723,
-    80,
-    34
+    262,
+    167,
+    200,
+    40
   ],
   "price2_region": [
     262,
-    750,
-    121,
-    34
+    167,
+    200,
+    40
   ],
   "mode1_item_click_coord": [
     486,
@@ -51,5 +51,5 @@
     255,
     0
   ],
-  "scan_interval_ms": 150
+  "scan_interval_ms": 120
 }

@@ -148,7 +148,7 @@ class Screen:
     def grab_region(self, region: Tuple[int, int, int, int]) -> np.ndarray:
         """
         region: (x, y, w, h)  -> BGR image
-        """
+"""
         self._ensure_ctx()
         x, y, w, h = region
         monitor = {"left": int(x), "top": int(y), "width": int(w), "height": int(h)}
@@ -441,15 +441,27 @@ class Mode1Worker(QtCore.QThread):
                 # 1) 点货物（始终先点）
                 self._refresh_item()
 
-                # 2) OCR 价格1
+                # 2) OCR 价格1 - 添加调试代码
                 r1 = self.cfg.price1_region
                 img1 = self.screen.grab_region((r1.x, r1.y, r1.w, r1.h))
+                
+                # 添加调试代码：保存截图以便查看
+                import cv2
+                cv2.imwrite("price1_debug.png", img1)
+                self.log.emit(f"已保存价格1区域截图到 price1_debug.png")
+                
+                # 添加调试代码：显示区域信息
+                self.log.emit(f"价格1区域: x={r1.x}, y={r1.y}, w={r1.w}, h={r1.h}")
+                
                 p1 = self.ocr.read_price_value(img1)
                 if p1 is not None:
                     self.price_signal.emit(p1, -1.0)
                     self.log.emit(f"[价格1] {p1}")
                 else:
                     self.log.emit("[价格1] 识别失败")
+                    # 添加调试代码：尝试获取原始识别文本
+                    raw_text = self.ocr.read_text(img1, digits_only=False)
+                    self.log.emit(f"[调试] 原始OCR文本: '{raw_text}'")
 
                 # 3) 判定 & 购买流程
                 if p1 is not None and p1 < self.threshold:
@@ -746,7 +758,6 @@ class MainWindow(QMainWindow):
                     self._log(f"{label_text} 坐标设置为 {x.text()},{y.text()}")
                 except:
                     pass
-
             btn_load = QPushButton("读入")
             btn_save = QPushButton("应用")
             btn_load.clicked.connect(load_vals)
