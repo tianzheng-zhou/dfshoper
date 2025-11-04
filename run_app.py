@@ -25,9 +25,11 @@ from pynput.keyboard import GlobalHotKeys
 import numpy as np
 import cv2
 
+
 # ============================= OCR Manager (GPU first) =============================
 class OCRManager:
     """Try PaddleOCR (GPU) -> EasyOCR (GPU). Fallback to CPU (not recommended)."""
+
     def __init__(self, logger):
         self.logger = logger
         self.backend = None  # "paddle" | "easyocr"
@@ -82,10 +84,10 @@ class OCRManager:
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         if scale != 1.0:
             h, w = gray.shape[:2]
-            gray = cv2.resize(gray, (int(w*scale), int(h*scale)), interpolation=cv2.INTER_LINEAR)
+            gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LINEAR)
         if binarize:
             _, th = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-            kernel = np.ones((2,2), np.uint8)
+            kernel = np.ones((2, 2), np.uint8)
             th = cv2.morphologyEx(th, cv2.MORPH_OPEN, kernel, iterations=1)
             return th
         return gray
@@ -113,7 +115,7 @@ class OCRManager:
 
         if digits_only:
             cleaned = "".join(ch for ch in text if (ch.isdigit() or ch in ".,")) \
-                      .replace(",", "")
+                .replace(",", "")
             return cleaned
         return text
 
@@ -130,6 +132,7 @@ class OCRManager:
         except Exception:
             return None
 
+
 # ============================= Screen capture (thread-safe) =============================
 class Screen:
     """
@@ -142,15 +145,15 @@ class Screen:
         if not hasattr(self._tls, "sct"):
             self._tls.sct = mss.mss()
 
-    def grab_region(self, region: Tuple[int,int,int,int]) -> np.ndarray:
+    def grab_region(self, region: Tuple[int, int, int, int]) -> np.ndarray:
         """
         region: (x, y, w, h)  -> BGR image
         """
         self._ensure_ctx()
         x, y, w, h = region
         monitor = {"left": int(x), "top": int(y), "width": int(w), "height": int(h)}
-        img = np.array(self._tls.sct.grab(monitor))      # BGRA
-        bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)      # -> BGR
+        img = np.array(self._tls.sct.grab(monitor))  # BGRA
+        bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)  # -> BGR
         return bgr
 
     @staticmethod
@@ -163,15 +166,17 @@ class Screen:
         pyautogui.press('esc')
 
     @staticmethod
-    def get_pixel(x: int, y: int) -> Tuple[int,int,int]:
+    def get_pixel(x: int, y: int) -> Tuple[int, int, int]:
         return pyautogui.screenshot().getpixel((x, y))
+
 
 # ============================= Macro Recorder =============================
 @dataclass
 class MacroEvent:
-    t: float          # timestamp relative to start
-    kind: str         # "mouse_click" / "mouse_move" / "key_down" / "key_up"
+    t: float  # timestamp relative to start
+    kind: str  # "mouse_click" / "mouse_move" / "key_down" / "key_up"
     data: dict
+
 
 class MacroRecorder:
     def __init__(self, logger):
@@ -195,9 +200,11 @@ class MacroRecorder:
                 return False
             t = time.time() - self._start_time
             if pressed:
-                self.events.append(MacroEvent(t, "mouse_click", {"x": x, "y": y, "button": str(button), "action": "down"}))
+                self.events.append(
+                    MacroEvent(t, "mouse_click", {"x": x, "y": y, "button": str(button), "action": "down"}))
             else:
-                self.events.append(MacroEvent(t, "mouse_click", {"x": x, "y": y, "button": str(button), "action": "up"}))
+                self.events.append(
+                    MacroEvent(t, "mouse_click", {"x": x, "y": y, "button": str(button), "action": "up"}))
             return True
 
         def on_move(x, y):
@@ -267,7 +274,7 @@ class MacroRecorder:
                 pyautogui.moveTo(data["x"], data["y"])
             elif kind == "mouse_click":
                 btn = "left"
-                if "Button.right" in data.get("button",""):
+                if "Button.right" in data.get("button", ""):
                     btn = "right"
                 if data.get("action") == "down":
                     pyautogui.mouseDown(x=data["x"], y=data["y"], button=btn)
@@ -279,8 +286,10 @@ class MacroRecorder:
                 pyautogui.keyUp(data["key"])
         self.logger("回放完成。")
 
+
 # ============================= Config =============================
 DEFAULT_CONFIG_PATH = "config.json"
+
 
 @dataclass
 class Region:
@@ -289,41 +298,45 @@ class Region:
     w: int
     h: int
 
+
 @dataclass
 class AppConfig:
-    trade_button: Tuple[int,int] = (0,0)
-    main_menu_button: Tuple[int,int] = (0,0)
-    category_button: Tuple[int,int] = (0,0)
-    buy_button: Tuple[int,int] = (0,0)
-    max_amount_button: Tuple[int,int] = (0,0)
+    trade_button: Tuple[int, int] = (0, 0)
+    main_menu_button: Tuple[int, int] = (0, 0)
+    category_button: Tuple[int, int] = (0, 0)
+    buy_button: Tuple[int, int] = (0, 0)
+    max_amount_button: Tuple[int, int] = (0, 0)
 
-    price1_region: Region = field(default_factory=lambda: Region(0,0,0,0))
-    price2_region: Region = field(default_factory=lambda: Region(0,0,0,0))
+    price1_region: Region = field(default_factory=lambda: Region(0, 0, 0, 0))
+    price2_region: Region = field(default_factory=lambda: Region(0, 0, 0, 0))
 
     # --- 模式1新逻辑 ---
-    mode1_item_click_coord: Tuple[int,int] = (0,0)   # 每轮先点击该货物
-    mode1_refresh_immediate: bool = True             # 不符合后 立即 Esc+再点货物，立刻下一轮
-    max_amount_clicks: int = 2                       # 购买前点击“最大额度”按钮的次数
+    mode1_item_click_coord: Tuple[int, int] = (0, 0)  # 每轮先点击该货物
+    mode1_refresh_immediate: bool = True  # 不符合后 立即 Esc+再点货物，立刻下一轮
+    max_amount_clicks: int = 2  # 购买前点击“最大额度”按钮的次数
 
     # 模式2 configuration
-    mode2_price_coord: Tuple[int,int] = (0,0)
+    mode2_price_coord: Tuple[int, int] = (0, 0)
     mode2_threshold: float = 0.0
-    mode2_target_color_coord: Tuple[int,int] = (0,0)
-    mode2_target_color_rgb: Tuple[int,int,int] = (0,255,0)
+    mode2_target_color_coord: Tuple[int, int] = (0, 0)
+    mode2_target_color_rgb: Tuple[int, int, int] = (0, 255, 0)
 
     scan_interval_ms: int = 150  # OCR 周期（毫秒）
 
     @staticmethod
-    def from_json(d: Dict[str,Any]):
-        def _tuple(name, default=(0,0)):
+    def from_json(d: Dict[str, Any]):
+        def _tuple(name, default=(0, 0)):
             v = d.get(name, list(default))
             return (int(v[0]), int(v[1]))
+
         def _region(name):
-            v = d.get(name, [0,0,0,0])
-            return Region(int(v[0]),int(v[1]),int(v[2]),int(v[3]))
-        def _color_tuple(name, default=(0,255,0)):
+            v = d.get(name, [0, 0, 0, 0])
+            return Region(int(v[0]), int(v[1]), int(v[2]), int(v[3]))
+
+        def _color_tuple(name, default=(0, 255, 0)):
             v = d.get(name, list(default))
             return (int(v[0]), int(v[1]), int(v[2]))
+
         cfg = AppConfig()
         cfg.trade_button = _tuple("trade_button")
         cfg.main_menu_button = _tuple("main_menu_button")
@@ -345,7 +358,7 @@ class AppConfig:
         cfg.scan_interval_ms = int(d.get("scan_interval_ms", 150))
         return cfg
 
-    def to_json(self) -> Dict[str,Any]:
+    def to_json(self) -> Dict[str, Any]:
         return {
             "trade_button": list(self.trade_button),
             "main_menu_button": list(self.main_menu_button),
@@ -367,6 +380,7 @@ class AppConfig:
             "scan_interval_ms": self.scan_interval_ms,
         }
 
+
 class ConfigManager:
     def __init__(self, path=DEFAULT_CONFIG_PATH, logger=lambda s: None):
         self.path = path
@@ -386,6 +400,7 @@ class ConfigManager:
         with open(self.path, "w", encoding="utf-8") as f:
             json.dump(self.config.to_json(), f, indent=2, ensure_ascii=False)
         self.logger(f"配置已保存：{self.path}")
+
 
 # ============================= Worker Threads =============================
 class Mode1Worker(QtCore.QThread):
@@ -484,6 +499,7 @@ class Mode1Worker(QtCore.QThread):
         finally:
             self.finished.emit()
 
+
 class Mode2Worker(QtCore.QThread):
     log = Signal(str)
     finished = Signal()
@@ -505,7 +521,7 @@ class Mode2Worker(QtCore.QThread):
             interval = max(30, int(self.cfg.scan_interval_ms)) / 1000.0
             while not self.stop_flag.is_set():
                 x, y = self.cfg.mode2_price_coord
-                region = (x-40, y-20, 80, 40)
+                region = (x - 40, y - 20, 80, 40)
                 img = self.screen.grab_region(region)
                 price = self.ocr.read_price_value(img)
                 if price is None:
@@ -523,7 +539,10 @@ class Mode2Worker(QtCore.QThread):
                         target = self.cfg.mode2_target_color_rgb
                         px = Screen.get_pixel(tx, ty)
                         self.log.emit(f"颜色检测: 当前={px}, 目标={target}")
-                        def close(a,b, tol=10): return all(abs(a[i]-b[i])<=tol for i in range(3))
+
+                        def close(a, b, tol=10):
+                            return all(abs(a[i] - b[i]) <= tol for i in range(3))
+
                         if close(px, target, tol=10):
                             self.log.emit("🎯 终止条件满足，退出模式2。")
                             break
@@ -543,6 +562,7 @@ class Mode2Worker(QtCore.QThread):
         finally:
             self.finished.emit()
 
+
 # ============================= UI =============================
 class DragPickButton(QPushButton):
     """
@@ -560,11 +580,12 @@ class DragPickButton(QPushButton):
         pos = QCursor.pos()
         self.coordPicked.emit(pos.x(), pos.y())
 
+
 class RegionPickerOverlay(QWidget):
     """
     全屏半透明覆盖层，框选矩形区域；regionSelected(x,y,w,h)
     """
-    regionSelected = Signal(int,int,int,int)
+    regionSelected = Signal(int, int, int, int)
 
     def __init__(self):
         super().__init__(None, Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
@@ -598,6 +619,7 @@ class RegionPickerOverlay(QWidget):
         self.regionSelected.emit(rect.x(), rect.y(), rect.width(), rect.height())
         self.close()
 
+
 # ============================= Main Window =============================
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -625,16 +647,20 @@ class MainWindow(QMainWindow):
         self._setup_global_hotkeys()
 
         self._build_ui()
-        self._log("提示：窗口内 F2 捕捉点、F3 框选、F8 开始、F9 停止；同时支持**全局热键**：F8(模式1)、Shift+F8(模式2)、F9(停止)。")
+        self._log(
+            "提示：窗口内 F2 捕捉点、F3 框选、F8 开始、F9 停止；同时支持**全局热键**：F8(模式1)、Shift+F8(模式2)、F9(停止)。")
 
     # ---------- Global Hotkeys ----------
     def _setup_global_hotkeys(self):
         def start_mode1():
             self._start_mode1()
+
         def start_mode2():
             self._start_mode2()
+
         def stop_all():
             self._stop_all()
+
         # 全局监听（需要管理员权限）
         try:
             self._gh_listener = GlobalHotKeys({
@@ -696,60 +722,91 @@ class MainWindow(QMainWindow):
             row = QWidget()
             h = QHBoxLayout(row)
             h.addWidget(QLabel(label_text))
-            x = QLineEdit(); x.setPlaceholderText("x")
-            y = QLineEdit(); y.setPlaceholderText("y")
+            x = QLineEdit();
+            x.setPlaceholderText("x")
+            y = QLineEdit();
+            y.setPlaceholderText("y")
             pb = DragPickButton("拖我到目标地址（松开即记录）")
             pb.setFixedWidth(220)
+
             def on_pick(px, py):
-                x.setText(str(px)); y.setText(str(py))
+                x.setText(str(px));
+                y.setText(str(py))
+
             pb.coordPicked.connect(on_pick)
+
             def load_vals():
                 vx, vy = getter()
-                x.setText(str(vx)); y.setText(str(vy))
+                x.setText(str(vx));
+                y.setText(str(vy))
+
             def save_vals():
                 try:
                     setter((int(x.text()), int(y.text())))
                     self._log(f"{label_text} 坐标设置为 {x.text()},{y.text()}")
                 except:
                     pass
+
             btn_load = QPushButton("读入")
             btn_save = QPushButton("应用")
             btn_load.clicked.connect(load_vals)
             btn_save.clicked.connect(save_vals)
-            h.addWidget(x); h.addWidget(y); h.addWidget(pb); h.addWidget(btn_load); h.addWidget(btn_save)
+            h.addWidget(x);
+            h.addWidget(y);
+            h.addWidget(pb);
+            h.addWidget(btn_load);
+            h.addWidget(btn_save)
             return row
 
         def region_row(label_text, getter, setter):
             row = QWidget()
             h = QHBoxLayout(row)
             h.addWidget(QLabel(label_text))
-            ex = QLineEdit(); ex.setPlaceholderText("x")
-            ey = QLineEdit(); ey.setPlaceholderText("y")
-            ew = QLineEdit(); ew.setPlaceholderText("w")
-            eh = QLineEdit(); eh.setPlaceholderText("h")
+            ex = QLineEdit();
+            ex.setPlaceholderText("x")
+            ey = QLineEdit();
+            ey.setPlaceholderText("y")
+            ew = QLineEdit();
+            ew.setPlaceholderText("w")
+            eh = QLineEdit();
+            eh.setPlaceholderText("h")
             btn_pick = QPushButton("框选区域(F3)")
+
             def pick_region():
                 overlay = RegionPickerOverlay()
-                overlay.regionSelected.connect(lambda x,y,w,h: (
+                overlay.regionSelected.connect(lambda x, y, w, h: (
                     ex.setText(str(x)), ey.setText(str(y)), ew.setText(str(w)), eh.setText(str(h))
                 ))
                 overlay.show()
+
             btn_apply = QPushButton("应用")
+
             def apply_region():
                 try:
                     setter(Region(int(ex.text()), int(ey.text()), int(ew.text()), int(eh.text())))
                     self._log(f"{label_text} 设置为 ({ex.text()},{ey.text()},{ew.text()},{eh.text()})")
                 except:
                     pass
+
             btn_load = QPushButton("读入")
+
             def load_vals():
                 r = getter()
-                ex.setText(str(r.x)); ey.setText(str(r.y)); ew.setText(str(r.w)); eh.setText(str(r.h))
+                ex.setText(str(r.x));
+                ey.setText(str(r.y));
+                ew.setText(str(r.w));
+                eh.setText(str(r.h))
+
             btn_pick.clicked.connect(pick_region)
             btn_apply.clicked.connect(apply_region)
             btn_load.clicked.connect(load_vals)
-            h.addWidget(ex); h.addWidget(ey); h.addWidget(ew); h.addWidget(eh)
-            h.addWidget(btn_pick); h.addWidget(btn_load); h.addWidget(btn_apply)
+            h.addWidget(ex);
+            h.addWidget(ey);
+            h.addWidget(ew);
+            h.addWidget(eh)
+            h.addWidget(btn_pick);
+            h.addWidget(btn_load);
+            h.addWidget(btn_apply)
             return row
 
         # 基础坐标
@@ -770,7 +827,8 @@ class MainWindow(QMainWindow):
         h2 = QHBoxLayout()
         self.cb_refresh_immediate = QCheckBox("不符合立即 Esc+再点货物刷新（推荐）")
         self.cb_refresh_immediate.setChecked(self.cfg_mgr.config.mode1_refresh_immediate)
-        self.cb_refresh_immediate.stateChanged.connect(lambda s: setattr(self.cfg_mgr.config, "mode1_refresh_immediate", bool(s)))
+        self.cb_refresh_immediate.stateChanged.connect(
+            lambda s: setattr(self.cfg_mgr.config, "mode1_refresh_immediate", bool(s)))
         h2.addWidget(self.cb_refresh_immediate)
 
         h2.addWidget(QLabel("最大额度点击次数："))
@@ -793,7 +851,8 @@ class MainWindow(QMainWindow):
         h.addStretch()
         grid.addLayout(h, 9, 0)
 
-        tips = QLabel("提示：拖拽按钮到目标位置（松开即记录）；窗口内也支持 F2/F3/F8/F9。若切到游戏，用全局热键 F8/Shift+F8/F9。")
+        tips = QLabel(
+            "提示：拖拽按钮到目标位置（松开即记录）；窗口内也支持 F2/F3/F8/F9。若切到游戏，用全局热键 F8/Shift+F8/F9。")
         tips.setWordWrap(True)
         grid.addWidget(tips, 10, 0)
 
@@ -831,11 +890,15 @@ class MainWindow(QMainWindow):
 
         # price coord
         self.btn_pick_price_coord = DragPickButton("拖到价格坐标处（松开记录）")
-        self.btn_pick_price_coord.coordPicked.connect(lambda x,y: self._set_mode2_price_coord((x,y)))
+        self.btn_pick_price_coord.coordPicked.connect(lambda x, y: self._set_mode2_price_coord((x, y)))
         grid.addWidget(QLabel("价格坐标："), 0, 0)
-        self.mode2_x = QLineEdit(); self.mode2_x.setPlaceholderText("x")
-        self.mode2_y = QLineEdit(); self.mode2_y.setPlaceholderText("y")
-        grid.addWidget(self.mode2_x, 0, 1); grid.addWidget(self.mode2_y, 0, 2); grid.addWidget(self.btn_pick_price_coord, 0, 3)
+        self.mode2_x = QLineEdit();
+        self.mode2_x.setPlaceholderText("x")
+        self.mode2_y = QLineEdit();
+        self.mode2_y.setPlaceholderText("y")
+        grid.addWidget(self.mode2_x, 0, 1);
+        grid.addWidget(self.mode2_y, 0, 2);
+        grid.addWidget(self.btn_pick_price_coord, 0, 3)
 
         # threshold
         grid.addWidget(QLabel("价格阈值："), 1, 0)
@@ -845,22 +908,28 @@ class MainWindow(QMainWindow):
         # target color
         grid.addWidget(QLabel("终止条件颜色坐标："), 2, 0)
         self.btn_pick_color_coord = DragPickButton("拖到像素位置")
-        self.btn_pick_color_coord.coordPicked.connect(lambda x,y: self._set_mode2_color_coord((x,y)))
-        self.mode2_color_x = QLineEdit(); self.mode2_color_x.setPlaceholderText("x")
-        self.mode2_color_y = QLineEdit(); self.mode2_color_y.setPlaceholderText("y")
-        grid.addWidget(self.mode2_color_x, 2, 1); grid.addWidget(self.mode2_color_y, 2, 2); grid.addWidget(self.btn_pick_color_coord, 2, 3)
+        self.btn_pick_color_coord.coordPicked.connect(lambda x, y: self._set_mode2_color_coord((x, y)))
+        self.mode2_color_x = QLineEdit();
+        self.mode2_color_x.setPlaceholderText("x")
+        self.mode2_color_y = QLineEdit();
+        self.mode2_color_y.setPlaceholderText("y")
+        grid.addWidget(self.mode2_color_x, 2, 1);
+        grid.addWidget(self.mode2_color_y, 2, 2);
+        grid.addWidget(self.btn_pick_color_coord, 2, 3)
 
         grid.addWidget(QLabel("目标颜色(R,G,B)："), 3, 0)
         self.mode2_color_r = QLineEdit(str(self.cfg_mgr.config.mode2_target_color_rgb[0]))
         self.mode2_color_g = QLineEdit(str(self.cfg_mgr.config.mode2_target_color_rgb[1]))
         self.mode2_color_b = QLineEdit(str(self.cfg_mgr.config.mode2_target_color_rgb[2]))
         btn_pick_color = QPushButton("颜色选择器")
+
         def pick_color():
             c = QColorDialog.getColor()
             if c.isValid():
                 self.mode2_color_r.setText(str(c.red()))
                 self.mode2_color_g.setText(str(c.green()))
                 self.mode2_color_b.setText(str(c.blue()))
+
         grid.addWidget(self.mode2_color_r, 3, 1)
         grid.addWidget(self.mode2_color_g, 3, 2)
         grid.addWidget(self.mode2_color_b, 3, 3)
@@ -879,8 +948,12 @@ class MainWindow(QMainWindow):
         self.btn_rec2.clicked.connect(lambda: self.macro2.start())
         self.btn_stop_rec2.clicked.connect(lambda: self.macro2.stop())
         self.btn_play2.clicked.connect(lambda: self.macro2.replay(stop_flag_callable=lambda: self.stop_flag.is_set()))
-        grid.addWidget(self.btn_rec1, 4, 0); grid.addWidget(self.btn_stop_rec1, 4, 1); grid.addWidget(self.btn_play1, 4, 2)
-        grid.addWidget(self.btn_rec2, 5, 0); grid.addWidget(self.btn_stop_rec2, 5, 1); grid.addWidget(self.btn_play2, 5, 2)
+        grid.addWidget(self.btn_rec1, 4, 0);
+        grid.addWidget(self.btn_stop_rec1, 4, 1);
+        grid.addWidget(self.btn_play1, 4, 2)
+        grid.addWidget(self.btn_rec2, 5, 0);
+        grid.addWidget(self.btn_stop_rec2, 5, 1);
+        grid.addWidget(self.btn_play2, 5, 2)
 
         # controls
         self.btn_mode2_start = QPushButton("开始模式2（Shift+F8 / 全局Shift+F8）")
@@ -904,7 +977,7 @@ class MainWindow(QMainWindow):
             elif key == Qt.Key_F3:
                 self._log("F3：框选区域")
                 overlay = RegionPickerOverlay()
-                overlay.regionSelected.connect(lambda x,y,w,h: self._log(f"区域：{x},{y},{w},{h}"))
+                overlay.regionSelected.connect(lambda x, y, w, h: self._log(f"区域：{x},{y},{w},{h}"))
                 overlay.show()
                 return True
             elif key == Qt.Key_F8:
@@ -932,16 +1005,31 @@ class MainWindow(QMainWindow):
                 w2.setText(str(y))
 
     # ---------------- Config setters ----------------
-    def _set_trade(self, xy): self.cfg_mgr.config.trade_button = xy
-    def _set_main(self, xy): self.cfg_mgr.config.main_menu_button = xy
-    def _set_category(self, xy): self.cfg_mgr.config.category_button = xy
-    def _set_buy(self, xy): self.cfg_mgr.config.buy_button = xy
-    def _set_max(self, xy): self.cfg_mgr.config.max_amount_button = xy
-    def _set_price1(self, r: 'Region'): self.cfg_mgr.config.price1_region = r
-    def _set_price2(self, r: 'Region'): self.cfg_mgr.config.price2_region = r
+    def _set_trade(self, xy):
+        self.cfg_mgr.config.trade_button = xy
+
+    def _set_main(self, xy):
+        self.cfg_mgr.config.main_menu_button = xy
+
+    def _set_category(self, xy):
+        self.cfg_mgr.config.category_button = xy
+
+    def _set_buy(self, xy):
+        self.cfg_mgr.config.buy_button = xy
+
+    def _set_max(self, xy):
+        self.cfg_mgr.config.max_amount_button = xy
+
+    def _set_price1(self, r: 'Region'):
+        self.cfg_mgr.config.price1_region = r
+
+    def _set_price2(self, r: 'Region'):
+        self.cfg_mgr.config.price2_region = r
+
     def _set_mode2_price_coord(self, xy):
         self.cfg_mgr.config.mode2_price_coord = xy
-        self.mode2_x.setText(str(xy[0])); self.mode2_y.setText(str(xy[1]))
+        self.mode2_x.setText(str(xy[0]));
+        self.mode2_y.setText(str(xy[1]))
 
     # ---------------- Buttons ----------------
     def _on_load(self):
@@ -1030,6 +1118,7 @@ class MainWindow(QMainWindow):
         self.log_box.append(f"[{ts}] {s}")
         self.log_box.moveCursor(QtGui.QTextCursor.End)
 
+
 # ============================= main =============================
 def main():
     pyautogui.FAILSAFE = True  # 鼠标移到左上角可紧急终止
@@ -1043,6 +1132,7 @@ def main():
         else QMessageBox.information(win, "提示", "未检测到价格区域配置。\n请使用F3框选价格1/价格2区域，并保存配置。")
     ))
     sys.exit(app.exec())
+
 
 if __name__ == "__main__":
     main()

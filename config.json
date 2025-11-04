@@ -1,0 +1,55 @@
+{
+  "trade_button": [
+    575,
+    45
+  ],
+  "main_menu_button": [
+    194,
+    307
+  ],
+  "category_button": [
+    172,
+    359
+  ],
+  "buy_button": [
+    1285,
+    686
+  ],
+  "max_amount_button": [
+    1429,
+    672
+  ],
+  "price1_region": [
+    1277,
+    723,
+    80,
+    34
+  ],
+  "price2_region": [
+    262,
+    750,
+    121,
+    34
+  ],
+  "mode1_item_click_coord": [
+    486,
+    237
+  ],
+  "mode1_refresh_immediate": true,
+  "max_amount_clicks": 1,
+  "mode2_price_coord": [
+    0,
+    0
+  ],
+  "mode2_threshold": 0.0,
+  "mode2_target_color_coord": [
+    0,
+    0
+  ],
+  "mode2_target_color_rgb": [
+    0,
+    255,
+    0
+  ],
+  "scan_interval_ms": 150
+}
