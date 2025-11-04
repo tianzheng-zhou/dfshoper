@@ -1,3 +1,4 @@
+import datetime
 import sys
 import os
 import json
@@ -28,17 +29,40 @@ import cv2
 
 # ============================= OCR Manager (GPU first) =============================
 class OCRManager:
-    """Try PaddleOCR (GPU) -> EasyOCR (GPU). Fallback to CPU (not recommended)."""
+    """Try Tesseract OCR first, then PaddleOCR (GPU) -> EasyOCR (GPU). Fallback to CPU (not recommended)."""
 
     def __init__(self, logger):
         self.logger = logger
-        self.backend = None  # "paddle" | "easyocr"
+        self.backend = None  # "tesseract" | "paddle" | "easyocr"
+        self.tesseract = None
         self.paddle = None
         self.easy = None
+        # 添加调试图像保存目录
+        self.debug_images_dir = "debug_ocr_images"
+        # 确保目录存在
+        if not os.path.exists(self.debug_images_dir):
+            os.makedirs(self.debug_images_dir)
+
+        # 初始化OCR引擎
         self._init_ocr()
 
     def _init_ocr(self):
-        # Try PaddleOCR GPU
+        # Try Tesseract OCR (最高优先级)
+        try:
+            import pytesseract
+            # 明确指定Tesseract的安装路径
+            pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # 修改为你的实际安装路径
+
+            # 测试Tesseract是否可用
+            test_text = pytesseract.image_to_string(np.zeros((10, 10), dtype=np.uint8))
+            self.tesseract = pytesseract
+            self.backend = "tesseract"
+            self.logger("OCR: Tesseract OCR 已启用")
+            return
+        except Exception as e:
+            self.logger(f"OCR: Tesseract OCR 不可用: {e}")
+
+        # Try PaddleOCR GPU (次高优先级)
         try:
             from paddleocr import PaddleOCR
             self.paddle = PaddleOCR(use_angle_cls=False, lang='en')
@@ -48,7 +72,7 @@ class OCRManager:
         except Exception as e:
             self.logger(f"OCR: PaddleOCR(GPU) 不可用: {e}")
 
-        # Try EasyOCR GPU
+        # Try EasyOCR GPU (第三优先级)
         try:
             import easyocr
             self.easy = easyocr.Reader(['en'], gpu=True)  # loads model once
@@ -71,7 +95,7 @@ class OCRManager:
                 self.backend = "easyocr"
                 self.logger("⚠️ OCR: GPU 不可用，暂用 EasyOCR(CPU)")
             except Exception as e:
-                self.logger("❌ OCR 初始化失败，请安装 PaddleOCR 或 EasyOCR（含 GPU 支持）")
+                self.logger("❌ OCR 初始化失败，请安装 Tesseract OCR、PaddleOCR 或 EasyOCR")
                 raise e
 
     @staticmethod
@@ -82,6 +106,7 @@ class OCRManager:
         if img is None or img.size == 0:
             return img
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        """
         if scale != 1.0:
             h, w = gray.shape[:2]
             gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LINEAR)
@@ -89,15 +114,44 @@ class OCRManager:
             _, th = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
             kernel = np.ones((2, 2), np.uint8)
             th = cv2.morphologyEx(th, cv2.MORPH_OPEN, kernel, iterations=1)
-            return th
+            return th"""
         return gray
 
+    def _save_debug_image(self, img, prefix="preprocessed"):
+        """
+        保存调试图像到本地目录
+        """
+        try:
+            filename = "prefix_debug.png"
+
+            # 如果图像是灰度图，转换为BGR以便正确保存
+            if len(img.shape) == 2:
+                img_bgr = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+            else:
+                img_bgr = img
+
+            cv2.imwrite(filename, img_bgr)
+            print(f"保存调试图像: {filename}")
+        except Exception as e:
+            print(f"保存调试图像失败: {e}")
+
+    # 修改read_text方法，添加保存调试图像功能
     def read_text(self, img_bgr: np.ndarray, digits_only: bool = True) -> str:
         """
         Return best numeric text detected in the image.
         """
         roi = self._preprocess(img_bgr, scale=2.0, binarize=True)
-        if self.backend == "paddle" and self.paddle is not None:
+
+        # 保存预处理后的图像用于调试
+        self._save_debug_image(roi)
+
+        if self.backend == "tesseract" and self.tesseract is not None:
+            # 为Tesseract配置自定义选项，优化数字识别
+            custom_config = r'--oem 3 --psm 6 outputbase digits'
+            text = self.tesseract.image_to_string(roi, config=custom_config)
+            # 清理识别结果中的空白字符
+            text = text.strip()
+        elif self.backend == "paddle" and self.paddle is not None:
             result = self.paddle.ocr(roi, cls=False, det=True, rec=True)
             text_candidates = []
             for line in result:
@@ -114,20 +168,19 @@ class OCRManager:
             text = ""
 
         if digits_only:
-            cleaned = "".join(ch for ch in text if (ch.isdigit() or ch in ".,")) \
-                .replace(",", "")
+            # 只保留数字字符，移除小数点和逗号
+            cleaned = "".join(ch for ch in text if ch.isdigit())
             return cleaned
         return text
 
-    def read_price_value(self, img_bgr: np.ndarray) -> Optional[float]:
+    # 修改read_price_value方法的数值转换逻辑
+    def read_price_value(self, img_bgr: np.ndarray) -> Optional[int]:
         s = self.read_text(img_bgr, digits_only=True)
         if not s:
             return None
         try:
-            parts = s.split(".")
-            if len(parts) > 2:
-                s = parts[0] + "." + "".join(parts[1:])
-            val = float(s)
+            # 修改：直接将清理后的字符串转换为整数
+            val = int(s)
             return val
         except Exception:
             return None
@@ -332,6 +385,7 @@ class AppConfig:
         def _region(name):
             v = d.get(name, [0, 0, 0, 0])
             return Region(int(v[0]), int(v[1]), int(v[2]), int(v[3]))
+
         def _color_tuple(name, default=(0, 255, 0)):
             v = d.get(name, list(default))
             return (int(v[0]), int(v[1]), int(v[2]))
@@ -443,15 +497,15 @@ class Mode1Worker(QtCore.QThread):
                 # 2) OCR 价格1 - 添加调试代码
                 r1 = self.cfg.price1_region
                 img1 = self.screen.grab_region((r1.x, r1.y, r1.w, r1.h))
-                
+
                 # 添加调试代码：保存截图以便查看
                 import cv2
                 cv2.imwrite("price1_debug.png", img1)
                 self.log.emit(f"已保存价格1区域截图到 price1_debug.png")
-                
+
                 # 添加调试代码：显示区域信息
                 self.log.emit(f"价格1区域: x={r1.x}, y={r1.y}, w={r1.w}, h={r1.h}")
-                
+
                 p1 = self.ocr.read_price_value(img1)
                 if p1 is not None:
                     self.price_signal.emit(p1, -1.0)
@@ -757,6 +811,7 @@ class MainWindow(QMainWindow):
                     self._log(f"{label_text} 坐标设置为 {x.text()},{y.text()}")
                 except:
                     pass
+
             btn_load = QPushButton("读入")
             btn_save = QPushButton("应用")
             btn_load.clicked.connect(load_vals)
@@ -786,7 +841,7 @@ class MainWindow(QMainWindow):
                 overlay = RegionPickerOverlay()
                 overlay.regionSelected.connect(lambda x, y, w, h: (
                     ex.setText(str(x)), ey.setText(str(y)), ew.setText(str(w)), eh.setText(str(h))
-))
+                ))
                 overlay.show()
 
             btn_apply = QPushButton("应用")
@@ -1092,7 +1147,7 @@ class MainWindow(QMainWindow):
         self.mode1_thread.finished.connect(lambda: self._log("模式1线程结束"))
         self.mode1_thread.start()
         self._log("模式1启动。")
-    
+
     def _start_mode2(self):
         if self.mode2_thread and self.mode2_thread.isRunning():
             self._log("模式2已在运行。")
