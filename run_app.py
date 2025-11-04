@@ -787,7 +787,7 @@ class MainWindow(QMainWindow):
                 overlay = RegionPickerOverlay()
                 overlay.regionSelected.connect(lambda x, y, w, h: (
                     ex.setText(str(x)), ey.setText(str(y)), ew.setText(str(w)), eh.setText(str(h))
-                ))
+))
                 overlay.show()
 
             btn_apply = QPushButton("应用")
@@ -1083,7 +1083,8 @@ class MainWindow(QMainWindow):
         try:
             th = float(self.edit_threshold.text())
         except:
-            QMessageBox.warning(self, "提示", "请先输入扫货最低价阈值。")
+            # 将警告对话框替换为日志记录
+            self._log("⚠️ 错误：请先输入有效的扫货最低价阈值")
             return
         self.stop_flag.clear()
         self.mode1_thread = Mode1Worker(self.cfg_mgr.config, self.ocr, self.stop_flag, th, logger=self._log)
@@ -1092,7 +1093,7 @@ class MainWindow(QMainWindow):
         self.mode1_thread.finished.connect(lambda: self._log("模式1线程结束"))
         self.mode1_thread.start()
         self._log("模式1启动。")
-
+    
     def _start_mode2(self):
         if self.mode2_thread and self.mode2_thread.isRunning():
             self._log("模式2已在运行。")
