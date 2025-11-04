@@ -41,7 +41,7 @@ class OCRManager:
         # Try PaddleOCR GPU
         try:
             from paddleocr import PaddleOCR
-            self.paddle = PaddleOCR(use_angle_cls=False, lang='en', use_gpu=True)
+            self.paddle = PaddleOCR(use_angle_cls=False, lang='en')
             self.backend = "paddle"
             self.logger("OCR: PaddleOCR(GPU) 已启用")
             return
@@ -61,7 +61,7 @@ class OCRManager:
         # Fallback CPU
         try:
             from paddleocr import PaddleOCR
-            self.paddle = PaddleOCR(use_angle_cls=False, lang='en', use_gpu=False)
+            self.paddle = PaddleOCR(use_angle_cls=False, lang='en')
             self.backend = "paddle"
             self.logger("⚠️ OCR: GPU 不可用，暂用 PaddleOCR(CPU)")
         except Exception:
@@ -332,7 +332,6 @@ class AppConfig:
         def _region(name):
             v = d.get(name, [0, 0, 0, 0])
             return Region(int(v[0]), int(v[1]), int(v[2]), int(v[3]))
-
         def _color_tuple(name, default=(0, 255, 0)):
             v = d.get(name, list(default))
             return (int(v[0]), int(v[1]), int(v[2]))

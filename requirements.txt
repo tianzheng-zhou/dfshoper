@@ -1,6 +1,6 @@
-PySide6
-mss
-pyautogui
-pynput
-opencv-python
-numpy
+PySide6~=6.10.0
+mss~=10.1.0
+pyautogui~=0.9.54
+pynput~=1.8.1
+opencv-python~=4.12.0.88
+numpy~=2.2.6
