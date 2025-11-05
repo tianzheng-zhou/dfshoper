@@ -11,7 +11,7 @@ from typing import List, Tuple, Optional, Dict, Any
 # --- UI / System ---
 import ctypes
 from PySide6 import QtCore, QtGui, QtWidgets
-from PySide6.QtCore import Qt, Signal, QRect
+from PySide6.QtCore import Qt, Signal, QRect, QTimer
 from PySide6.QtGui import QColor, QCursor
 from PySide6.QtWidgets import (
     QApplication, QWidget, QMainWindow, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
@@ -488,6 +488,11 @@ class ConfigManager:
         self.all_configs = {DEFAULT_CONFIG_PATH: self.config}  # 存储所有加载的配置文件
         self.current_config_name = DEFAULT_CONFIG_PATH
 
+    # Add this new method
+    def get_config_names(self):
+        """返回所有已加载的配置文件名列表"""
+        return list(self.all_configs.keys())
+
     def load(self):
         if os.path.exists(self.path):
             try:
@@ -588,9 +593,31 @@ class ConfigManager:
             return True
         return False
 
+
+class RegionPickerOverlay(QWidget):
+    def __init__(self):
+        super().__init__(None, Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        # 可选：添加轻微的背景色以便用户能够看到覆盖层
+        self.setStyleSheet("background-color: rgba(0, 0, 0, 10);")
+        self.setAttribute(Qt.WA_TranslucentBackground, False)
+        # 添加鼠标提示
+        self.setCursor(Qt.CrossCursor)
+        self.start = None
+        self.end = None
+        self.setMouseTracking(True)
+        self.showFullScreen()
+        # 添加一个短暂的延时以确保窗口完全显示
+        QTimer.singleShot(100, self.ensureVisible)
+
+    def ensureVisible(self):
+        # 确保窗口在最顶层
+        self.raise_()
+        self.activateWindow()
+
+    """
     def get_config_names(self):
-        """获取所有已加载的配置文件名列表"""
         return list(self.all_configs.keys())
+        """
 
 
 class Mode1Worker(QtCore.QThread):
@@ -813,12 +840,21 @@ class RegionPickerOverlay(QWidget):
     regionSelected = Signal(int, int, int, int)
 
     def __init__(self):
-        super().__init__(None, Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        super().__init__(None, Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        # 添加轻微的背景色以便用户能够看到覆盖层
+        self.setStyleSheet("background-color: rgba(0, 0, 0, 10);")
+        self.setAttribute(Qt.WA_TranslucentBackground, False)
+        # 添加鼠标提示
+        self.setCursor(Qt.CrossCursor)
         self.start = None
         self.end = None
         self.setMouseTracking(True)
         self.showFullScreen()
+
+    def ensureVisible(self):
+        # 确保窗口在最顶层
+        self.raise_()
+        self.activateWindow()
 
     def paintEvent(self, e):
         if self.start and self.end:
@@ -862,6 +898,8 @@ class MainWindow(QMainWindow):
 
         self.cfg_mgr = ConfigManager(logger=self._log)
         self.cfg_mgr.load()
+        # Add this line to load all configurations
+        self.cfg_mgr.load_all_configs()
         self.ocr = OCRManager(logger=self._log)
         self.stop_flag = threading.Event()
 
@@ -1238,11 +1276,16 @@ class MainWindow(QMainWindow):
                 self._fill_focused_coord(scaled_x, scaled_y)
                 return True
             elif key == Qt.Key_F3:
-                self._log("F3：框选区域")
-                overlay = RegionPickerOverlay()
-                overlay.regionSelected.connect(lambda x, y, w, h: self._log(f"区域：{x},{y},{w},{h}"))
-                overlay.show()
-                return True
+                self._log("F3：尝试创建框选覆盖层")
+                try:
+                    overlay = RegionPickerOverlay()
+                    overlay.regionSelected.connect(lambda x, y, w, h: self._log(f"区域：{x},{y},{w},{h}"))
+                    overlay.show()
+                    self._log("F3：框选覆盖层已创建")
+                    return True
+                except Exception as e:
+                    self._log(f"F3：创建框选覆盖层失败: {str(e)}")
+                    return True
             elif key == Qt.Key_F8:
                 idx = self.tabs.currentIndex()
                 if idx == 1:
