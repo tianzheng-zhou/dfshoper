@@ -120,7 +120,7 @@ class OCRManager:
                 raise e
 
     @staticmethod
-    def _preprocess(img: np.ndarray, scale: float = 2.0, binarize: bool = True) -> np.ndarray:
+    def _preprocess(img: np.ndarray, scale: float = 2.0, binarize: bool = True):
         """
         Preprocess ROI: grayscale -> resize -> (optional) threshold -> morphology
         """
@@ -799,7 +799,7 @@ class RegionPickerOverlay(QWidget):
     def paintEvent(self, e):
         if self.start and self.end:
             p = QtGui.QPainter(self)
-            p.setRenderHint(QtGui.QPainter.Antialiasing)
+            p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
             rect = QRect(self.start, self.end).normalized()
             p.setPen(QtGui.QPen(QtGui.QColor(0, 255, 0, 200), 2))
             p.setBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0, 50)))
@@ -829,7 +829,7 @@ class MainWindow(QMainWindow):
         self.resize(1024, 720)
 
         self.log_box = QTextEdit(readOnly=True)
-        self.log_box.setLineWrapMode(QTextEdit.NoWrap)
+        self.log_box.setLineWrapMode(QtWidgets.QTextEdit.LineWrapMode.NoWrap)
 
         self.cfg_mgr = ConfigManager(logger=self._log)
         self.cfg_mgr.load()
@@ -1198,7 +1198,7 @@ class MainWindow(QMainWindow):
 
     # ---------------- Event Filter for window-level hotkeys ----------------
     def eventFilter(self, obj, event):
-        if event.type() == QtCore.QEvent.KeyPress:
+        if event.type() == QtCore.QEvent.Type.KeyPress:
             key = event.key()
             if key == Qt.Key_F2:
                 pos = QCursor.pos()
@@ -1230,7 +1230,7 @@ class MainWindow(QMainWindow):
         if isinstance(w, QLineEdit):
             w.setText(str(x))
             # 尝试给下一个焦点控件写入 y
-            QApplication.sendEvent(self, QtGui.QKeyEvent(QtCore.QEvent.KeyPress, Qt.Key_Tab, Qt.NoModifier))
+            QApplication.sendEvent(self, QtGui.QKeyEvent(QtCore.QEvent.Type.KeyPress, Qt.Key_Tab, Qt.NoModifier))
             w2 = QApplication.focusWidget()
             if isinstance(w2, QLineEdit):
                 w2.setText(str(y))
@@ -1352,17 +1352,16 @@ class MainWindow(QMainWindow):
                 pass
 
             # 打开文件保存对话框
-            options = QFileDialog.Options()
             # 默认保存到当前目录，并使用当前配置文件名作为默认文件名
             current_dir = os.path.dirname(self.cfg_mgr.path) if os.path.dirname(self.cfg_mgr.path) else '.'
             default_filename = os.path.basename(self.cfg_mgr.path) if self.cfg_mgr.path else "config.json"
-
+            
             path, _ = QFileDialog.getSaveFileName(
                 self, "配置另存为",
                 os.path.join(current_dir, default_filename),
-                "JSON Files (*.json);;All Files (*)", options=options
+                "JSON Files (*.json);;All Files (*)"
             )
-
+            
             if path:
                 # 确保文件扩展名为.json
                 if not path.endswith('.json'):
@@ -1439,8 +1438,10 @@ class MainWindow(QMainWindow):
 
     def _log(self, s: str):
         ts = time.strftime("%H:%M:%S")
+        self.log_box.setLineWrapMode(QtWidgets.QTextEdit.LineWrapMode.NoWrap)
+        
         self.log_box.append(f"[{ts}] {s}")
-        self.log_box.moveCursor(QtGui.QTextCursor.End)
+        self.log_box.moveCursor(QtGui.QTextCursor.MoveOperation.End)
 
 
 # ============================= main =============================
