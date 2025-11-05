@@ -623,7 +623,17 @@ class Mode1Worker(QtCore.QThread):
                     # 添加调试代码：显示区域信息
                     self.log.emit(f"价格1区域: x={r1.x}, y={r1.y}, w={r1.w}, h={r1.h}")
 
+                # 初始OCR识别
                 p1 = self.ocr.read_price_value(img1)
+                
+                # 如果识别失败，重新截取图片并再次尝试识别
+                if p1 is None:
+                    self.log.emit("[价格1] 首次识别失败，重新截取图片并再次尝试...")
+                    # 重新截取图片
+                    img1_retry = self.screen.grab_region((r1.x, r1.y, r1.w, r1.h))
+                    # 再次进行OCR识别
+                    p1 = self.ocr.read_price_value(img1_retry)
+                
                 if p1 is not None:
                     self.price_signal.emit(p1, -1.0)
                     self.log.emit(f"[价格1] {p1}")
