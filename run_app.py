@@ -38,6 +38,7 @@ ENABLE_TESSERACT = False
 ENABLE_PADDLEOCR = False
 ENABLE_EASYOCR = True
 
+
 # ============================= OCR Manager (GPU first) =============================
 class OCRManager:
     """Try Tesseract OCR first, then PaddleOCR (GPU) -> EasyOCR (GPU). Fallback to CPU (not recommended)."""
@@ -241,7 +242,7 @@ class Screen:
         pyautogui.press('esc')
 
     @staticmethod
-    def get_pixel(x: int, y: int) -> Tuple[int, int, int]:
+    def get_pixel(x: int, y: int) -> float | tuple[int, ...] | None:
         return pyautogui.screenshot().getpixel((x, y))
 
 
@@ -289,27 +290,29 @@ class MacroRecorder:
             self.events.append(MacroEvent(t, "mouse_move", {"x": x, "y": y}))
             return True
 
+        # 修改on_press函数
         def on_press(key):
             if not self._recording:
-                return False
+                return None  # 修改为None
             t = time.time() - self._start_time
             try:
                 k = key.char if hasattr(key, 'char') and key.char else str(key)
             except:
                 k = str(key)
             self.events.append(MacroEvent(t, "key_down", {"key": k}))
-            return True
+            return None  # 修改为None
 
+        # 修改on_release函数
         def on_release(key):
             if not self._recording:
-                return False
+                return None  # 修改为None
             t = time.time() - self._start_time
             try:
                 k = key.char if hasattr(key, 'char') and key.char else str(key)
             except:
                 k = str(key)
             self.events.append(MacroEvent(t, "key_up", {"key": k}))
-            return True
+            return None  # 修改为None
 
         self.mouse_listener = mouse.Listener(on_click=on_click, on_move=on_move)
         self.keyboard_listener = keyboard.Listener(on_press=on_press, on_release=on_release)
@@ -479,7 +482,7 @@ class ConfigManager:
                     # 将默认配置保存到空文件中
                     self.save()
                     return
-                
+
                 with open(self.path, "r", encoding="utf-8") as f:
                     try:
                         d = json.load(f)
@@ -520,12 +523,12 @@ class ConfigManager:
         """扫描并加载当前目录下所有的JSON配置文件"""
         # 确保目录存在
         config_dir = os.path.dirname(self.path) if os.path.dirname(self.path) else '.'
-        
+
         try:
             # 获取目录下所有的JSON文件
-            json_files = [f for f in os.listdir(config_dir) 
-                         if f.endswith('.json') and os.path.isfile(os.path.join(config_dir, f))]
-            
+            json_files = [f for f in os.listdir(config_dir)
+                          if f.endswith('.json') and os.path.isfile(os.path.join(config_dir, f))]
+
             # 加载每个JSON文件
             for json_file in json_files:
                 file_path = os.path.join(config_dir, json_file)
@@ -537,7 +540,7 @@ class ConfigManager:
                     self.logger(f"已加载配置文件：{json_file}")
                 except Exception as e:
                     self.logger(f"加载配置文件 {json_file} 失败：{str(e)}")
-            
+
             # 如果有配置文件，默认使用第一个
             if json_files:
                 self.current_config_name = json_files[0]
@@ -625,7 +628,7 @@ class Mode1Worker(QtCore.QThread):
 
                 # 初始OCR识别
                 p1 = self.ocr.read_price_value(img1)
-                
+
                 # 如果识别失败，重新截取图片并再次尝试识别
                 if p1 is None:
                     self.log.emit("[价格1] 首次识别失败，重新截取图片并再次尝试...")
@@ -633,7 +636,7 @@ class Mode1Worker(QtCore.QThread):
                     img1_retry = self.screen.grab_region((r1.x, r1.y, r1.w, r1.h))
                     # 再次进行OCR识别
                     p1 = self.ocr.read_price_value(img1_retry)
-                
+
                 if p1 is not None:
                     self.price_signal.emit(p1, -1.0)
                     self.log.emit(f"[价格1] {p1}")
@@ -890,7 +893,7 @@ class MainWindow(QMainWindow):
 
         # Global controls
         topbar = QHBoxLayout()
-        
+
         # 配置文件选择下拉框
         self.config_selector = QComboBox()
         self.config_selector.addItems(self.cfg_mgr.get_config_names())
@@ -901,7 +904,7 @@ class MainWindow(QMainWindow):
         self.config_selector.currentTextChanged.connect(self._on_config_selected)
         topbar.addWidget(QLabel("配置文件："))
         topbar.addWidget(self.config_selector)
-        
+
         self.btn_load = QPushButton("打开配置文件")
         self.btn_save = QPushButton("保存配置")
         self.btn_save_as = QPushButton("配置另存为")
@@ -931,26 +934,27 @@ class MainWindow(QMainWindow):
         w = QWidget()
         grid = QGridLayout(w)
 
+        # 修改 coord_row 函数
         def coord_row(label_text, getter, setter):
             row = QWidget()
             h = QHBoxLayout(row)
             h.addWidget(QLabel(label_text))
-            x = QLineEdit();
+            x = QLineEdit()
             x.setPlaceholderText("x")
-            y = QLineEdit();
+            y = QLineEdit()
             y.setPlaceholderText("y")
             pb = DragPickButton("拖我到目标地址（松开即记录）")
             pb.setFixedWidth(220)
 
             def on_pick(px, py):
-                x.setText(str(px));
+                x.setText(str(px))
                 y.setText(str(py))
 
             pb.coordPicked.connect(on_pick)
 
             def load_vals():
                 vx, vy = getter()
-                x.setText(str(vx));
+                x.setText(str(vx))
                 y.setText(str(vy))
 
             def save_vals():
@@ -964,28 +968,32 @@ class MainWindow(QMainWindow):
             btn_save = QPushButton("应用")
             btn_load.clicked.connect(load_vals)
             btn_save.clicked.connect(save_vals)
-            h.addWidget(x);
-            h.addWidget(y);
-            h.addWidget(pb);
-            h.addWidget(btn_load);
+            # 添加这两行实现即时保存
+            x.editingFinished.connect(save_vals)
+            y.editingFinished.connect(save_vals)
+            h.addWidget(x)
+            h.addWidget(y)
+            h.addWidget(pb)
+            h.addWidget(btn_load)
             h.addWidget(btn_save)
-            
+
             # 自动加载配置值到输入框
             load_vals()
-            
+
             return row
 
+        # 修改 region_row 函数
         def region_row(label_text, getter, setter):
             row = QWidget()
             h = QHBoxLayout(row)
             h.addWidget(QLabel(label_text))
-            ex = QLineEdit();
+            ex = QLineEdit()
             ex.setPlaceholderText("x")
-            ey = QLineEdit();
+            ey = QLineEdit()
             ey.setPlaceholderText("y")
-            ew = QLineEdit();
+            ew = QLineEdit()
             ew.setPlaceholderText("w")
-            eh = QLineEdit();
+            eh = QLineEdit()
             eh.setPlaceholderText("h")
             btn_pick = QPushButton("框选区域(F3)")
 
@@ -1009,22 +1017,25 @@ class MainWindow(QMainWindow):
 
             def load_vals():
                 r = getter()
-                ex.setText(str(r.x));
-                ey.setText(str(r.y));
-                ew.setText(str(r.w));
+                ex.setText(str(r.x))
+                ey.setText(str(r.y))
+                ew.setText(str(r.w))
                 eh.setText(str(r.h))
 
             btn_pick.clicked.connect(pick_region)
             btn_apply.clicked.connect(apply_region)
             btn_load.clicked.connect(load_vals)
-            h.addWidget(ex);
-            h.addWidget(ey);
-            h.addWidget(ew);
+            # 添加这几行实现即时保存
+            for edit in [ex, ey, ew, eh]:
+                edit.editingFinished.connect(apply_region)
+            h.addWidget(ex)
+            h.addWidget(ey)
+            h.addWidget(ew)
             h.addWidget(eh)
-            h.addWidget(btn_pick);
-            h.addWidget(btn_load);
+            h.addWidget(btn_pick)
+            h.addWidget(btn_load)
             h.addWidget(btn_apply)
-            
+
             # 自动加载配置值到输入框
             load_vals()
             return row
@@ -1112,12 +1123,12 @@ class MainWindow(QMainWindow):
         self.btn_pick_price_coord = DragPickButton("拖到价格坐标处（松开记录）")
         self.btn_pick_price_coord.coordPicked.connect(lambda x, y: self._set_mode2_price_coord((x, y)))
         grid.addWidget(QLabel("价格坐标："), 0, 0)
-        self.mode2_x = QLineEdit();
+        self.mode2_x = QLineEdit()
         self.mode2_x.setPlaceholderText("x")
-        self.mode2_y = QLineEdit();
+        self.mode2_y = QLineEdit()
         self.mode2_y.setPlaceholderText("y")
-        grid.addWidget(self.mode2_x, 0, 1);
-        grid.addWidget(self.mode2_y, 0, 2);
+        grid.addWidget(self.mode2_x, 0, 1)
+        grid.addWidget(self.mode2_y, 0, 2)
         grid.addWidget(self.btn_pick_price_coord, 0, 3)
 
         # threshold
@@ -1129,12 +1140,12 @@ class MainWindow(QMainWindow):
         grid.addWidget(QLabel("终止条件颜色坐标："), 2, 0)
         self.btn_pick_color_coord = DragPickButton("拖到像素位置")
         self.btn_pick_color_coord.coordPicked.connect(lambda x, y: self._set_mode2_color_coord((x, y)))
-        self.mode2_color_x = QLineEdit();
+        self.mode2_color_x = QLineEdit()
         self.mode2_color_x.setPlaceholderText("x")
-        self.mode2_color_y = QLineEdit();
+        self.mode2_color_y = QLineEdit()
         self.mode2_color_y.setPlaceholderText("y")
-        grid.addWidget(self.mode2_color_x, 2, 1);
-        grid.addWidget(self.mode2_color_y, 2, 2);
+        grid.addWidget(self.mode2_color_x, 2, 1)
+        grid.addWidget(self.mode2_color_y, 2, 2)
         grid.addWidget(self.btn_pick_color_coord, 2, 3)
 
         grid.addWidget(QLabel("目标颜色(R,G,B)："), 3, 0)
@@ -1168,11 +1179,11 @@ class MainWindow(QMainWindow):
         self.btn_rec2.clicked.connect(lambda: self.macro2.start())
         self.btn_stop_rec2.clicked.connect(lambda: self.macro2.stop())
         self.btn_play2.clicked.connect(lambda: self.macro2.replay(stop_flag_callable=lambda: self.stop_flag.is_set()))
-        grid.addWidget(self.btn_rec1, 4, 0);
-        grid.addWidget(self.btn_stop_rec1, 4, 1);
+        grid.addWidget(self.btn_rec1, 4, 0)
+        grid.addWidget(self.btn_stop_rec1, 4, 1)
         grid.addWidget(self.btn_play1, 4, 2)
-        grid.addWidget(self.btn_rec2, 5, 0);
-        grid.addWidget(self.btn_stop_rec2, 5, 1);
+        grid.addWidget(self.btn_rec2, 5, 0)
+        grid.addWidget(self.btn_stop_rec2, 5, 1)
         grid.addWidget(self.btn_play2, 5, 2)
 
         # controls
@@ -1213,6 +1224,7 @@ class MainWindow(QMainWindow):
                 self._stop_all()
                 return True
         return super().eventFilter(obj, event)
+
     def _fill_focused_coord(self, x, y):
         w = QApplication.focusWidget()
         if isinstance(w, QLineEdit):
@@ -1247,7 +1259,7 @@ class MainWindow(QMainWindow):
 
     def _set_mode2_price_coord(self, xy):
         self.cfg_mgr.config.mode2_price_coord = xy
-        self.mode2_x.setText(str(xy[0]));
+        self.mode2_x.setText(str(xy[0]))
         self.mode2_y.setText(str(xy[1]))
 
     # ---------------- Buttons ----------------
@@ -1257,19 +1269,19 @@ class MainWindow(QMainWindow):
             if path:
                 self.cfg_mgr.path = path
                 self.cfg_mgr.load()
-                
+
                 # 1. 更新ConfigManager的all_configs字典，将新配置添加进去
                 config_name = os.path.basename(path)
                 self.cfg_mgr.all_configs[config_name] = self.cfg_mgr.config
                 self.cfg_mgr.current_config_name = config_name
-                
+
                 # 2. 清空下拉框并重新填充所有配置名称
                 self.config_selector.clear()
                 self.config_selector.addItems(self.cfg_mgr.get_config_names())
-                
+
                 # 3. 选中当前加载的配置
                 self.config_selector.setCurrentText(config_name)
-                
+
                 # refresh UI reflect critical fields
                 self.spin_interval.setValue(self.cfg_mgr.config.scan_interval_ms)
                 self.mode2_threshold.setText(str(self.cfg_mgr.config.mode2_threshold))
@@ -1278,7 +1290,7 @@ class MainWindow(QMainWindow):
                 # 模式1新增字段
                 self.cb_refresh_immediate.setChecked(self.cfg_mgr.config.mode1_refresh_immediate)
                 self.spin_max_clicks.setValue(self.cfg_mgr.config.max_amount_clicks)
-                
+
                 self._log(f"已成功加载配置文件：{path}")
         except Exception as e:
             self._log("读取失败：" + str(e))
@@ -1296,7 +1308,7 @@ class MainWindow(QMainWindow):
                 # 模式1相关配置
                 self.cb_refresh_immediate.setChecked(self.cfg_mgr.config.mode1_refresh_immediate)
                 self.spin_max_clicks.setValue(self.cfg_mgr.config.max_amount_clicks)
-                
+
                 # 刷新配置标签页以自动加载坐标和区域值
                 # 首先获取当前选中的标签页索引
                 current_tab_index = self.tabs.currentIndex()
@@ -1306,7 +1318,7 @@ class MainWindow(QMainWindow):
                 # 如果之前选中的是配置标签页，则重新选中它
                 if current_tab_index == 0:
                     self.tabs.setCurrentIndex(0)
-                
+
             self._log(f"已加载配置：{config_name}")
         except Exception as e:
             self._log(f"加载配置失败：{e}")
@@ -1344,33 +1356,33 @@ class MainWindow(QMainWindow):
             # 默认保存到当前目录，并使用当前配置文件名作为默认文件名
             current_dir = os.path.dirname(self.cfg_mgr.path) if os.path.dirname(self.cfg_mgr.path) else '.'
             default_filename = os.path.basename(self.cfg_mgr.path) if self.cfg_mgr.path else "config.json"
-            
+
             path, _ = QFileDialog.getSaveFileName(
-                self, "配置另存为", 
+                self, "配置另存为",
                 os.path.join(current_dir, default_filename),
                 "JSON Files (*.json);;All Files (*)", options=options
             )
-            
+
             if path:
                 # 确保文件扩展名为.json
                 if not path.endswith('.json'):
                     path += '.json'
-                
+
                 # 保存配置到新路径
                 original_path = self.cfg_mgr.path
                 self.cfg_mgr.path = path
                 self.cfg_mgr.save()
-                
+
                 # 更新配置管理器
                 config_name = os.path.basename(path)
                 self.cfg_mgr.all_configs[config_name] = self.cfg_mgr.config
                 self.cfg_mgr.current_config_name = config_name
-                
+
                 # 刷新配置选择下拉框
                 self.config_selector.clear()
                 self.config_selector.addItems(self.cfg_mgr.get_config_names())
                 self.config_selector.setCurrentText(config_name)
-                
+
                 self._log(f"配置已另存为：{path}")
         except Exception as e:
             self._log(f"配置另存为失败：{e}")
