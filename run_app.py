@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import List, Tuple, Optional, Dict, Any
 
 # --- UI / System ---
+import ctypes
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal, QRect
 from PySide6.QtGui import QColor, QCursor
@@ -37,6 +38,26 @@ WAIT_AFTER_ESC = 0  # 按ESC后的等待时间
 ENABLE_TESSERACT = False
 ENABLE_PADDLEOCR = False
 ENABLE_EASYOCR = True
+
+
+# 添加获取系统DPI缩放因子的函数
+def get_system_scaling_factor():
+    try:
+        # 获取系统DPI缩放因子
+        user32 = ctypes.windll.user32
+        user32.SetProcessDPIAware()
+        # 获取主显示器的缩放因子
+        dpi = user32.GetDpiForSystem()
+        # Windows默认DPI是96，计算缩放比例
+        scaling_factor = dpi / 96.0
+        return scaling_factor
+    except:
+        # 如果获取失败，默认返回1.0（无缩放）
+        return 1.0
+
+
+# 获取系统缩放因子
+system_scaling_factor = get_system_scaling_factor()
 
 
 # ============================= OCR Manager (GPU first) =============================
@@ -779,7 +800,10 @@ class DragPickButton(QPushButton):
         super().mouseReleaseEvent(e)
         self.setCursor(Qt.ArrowCursor)
         pos = QCursor.pos()
-        self.coordPicked.emit(pos.x(), pos.y())
+        # 应用缩放因子（使用四舍五入）
+        scaled_x = round(pos.x() * system_scaling_factor)
+        scaled_y = round(pos.y() * system_scaling_factor)
+        self.coordPicked.emit(scaled_x, scaled_y)
 
 
 class RegionPickerOverlay(QWidget):
@@ -817,7 +841,12 @@ class RegionPickerOverlay(QWidget):
     def mouseReleaseEvent(self, e: QtGui.QMouseEvent):
         self.end = e.globalPosition().toPoint()
         rect = QRect(self.start, self.end).normalized()
-        self.regionSelected.emit(rect.x(), rect.y(), rect.width(), rect.height())
+        # 应用缩放因子到区域坐标（使用四舍五入）
+        scaled_x = round(rect.x() * system_scaling_factor)
+        scaled_y = round(rect.y() * system_scaling_factor)
+        scaled_w = round(rect.width() * system_scaling_factor)
+        scaled_h = round(rect.height() * system_scaling_factor)
+        self.regionSelected.emit(scaled_x, scaled_y, scaled_w, scaled_h)
         self.close()
 
 
@@ -1202,8 +1231,11 @@ class MainWindow(QMainWindow):
             key = event.key()
             if key == Qt.Key_F2:
                 pos = QCursor.pos()
-                self._log(f"F2 捕捉坐标：{pos.x()},{pos.y()}")
-                self._fill_focused_coord(pos.x(), pos.y())
+                # 应用缩放因子，将Qt逻辑坐标转换为物理像素坐标（使用四舍五入）
+                scaled_x = round(pos.x() * system_scaling_factor)
+                scaled_y = round(pos.y() * system_scaling_factor)
+                self._log(f"F2 捕捉坐标：{scaled_x},{scaled_y} (缩放因子: {system_scaling_factor})")
+                self._fill_focused_coord(scaled_x, scaled_y)
                 return True
             elif key == Qt.Key_F3:
                 self._log("F3：框选区域")
@@ -1355,13 +1387,13 @@ class MainWindow(QMainWindow):
             # 默认保存到当前目录，并使用当前配置文件名作为默认文件名
             current_dir = os.path.dirname(self.cfg_mgr.path) if os.path.dirname(self.cfg_mgr.path) else '.'
             default_filename = os.path.basename(self.cfg_mgr.path) if self.cfg_mgr.path else "config.json"
-            
+
             path, _ = QFileDialog.getSaveFileName(
                 self, "配置另存为",
                 os.path.join(current_dir, default_filename),
                 "JSON Files (*.json);;All Files (*)"
             )
-            
+
             if path:
                 # 确保文件扩展名为.json
                 if not path.endswith('.json'):
@@ -1439,7 +1471,7 @@ class MainWindow(QMainWindow):
     def _log(self, s: str):
         ts = time.strftime("%H:%M:%S")
         self.log_box.setLineWrapMode(QtWidgets.QTextEdit.LineWrapMode.NoWrap)
-        
+
         self.log_box.append(f"[{ts}] {s}")
         self.log_box.moveCursor(QtGui.QTextCursor.MoveOperation.End)
 
