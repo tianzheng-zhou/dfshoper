@@ -413,17 +413,10 @@ class AppConfig:
 
     price1_region: Region = field(default_factory=lambda: Region(0, 0, 0, 0))
 
-
     # --- 模式1新逻辑 ---
     mode1_item_click_coord: Tuple[int, int] = (0, 0)  # 每轮先点击该货物
     mode1_refresh_immediate: bool = True  # 不符合后 立即 Esc+再点货物，立刻下一轮
     max_amount_clicks: int = 2  # 购买前点击“最大额度”按钮的次数
-
-    # 模式2 configuration
-    mode2_price_coord: Tuple[int, int] = (0, 0)
-    mode2_threshold: float = 0.0
-    mode2_target_color_coord: Tuple[int, int] = (0, 0)
-    mode2_target_color_rgb: Tuple[int, int, int] = (0, 255, 0)
 
     scan_interval_ms: int = 150  # OCR 周期（毫秒）
 
@@ -455,10 +448,6 @@ class AppConfig:
         cfg.mode1_refresh_immediate = bool(d.get("mode1_refresh_immediate", True))
         cfg.max_amount_clicks = int(d.get("max_amount_clicks", 2))
 
-        cfg.mode2_price_coord = _tuple("mode2_price_coord")
-        cfg.mode2_threshold = float(d.get("mode2_threshold", 0.0))
-        cfg.mode2_target_color_coord = _tuple("mode2_target_color_coord")
-        cfg.mode2_target_color_rgb = _color_tuple("mode2_target_color_rgb")
         cfg.scan_interval_ms = int(d.get("scan_interval_ms", 150))
         return cfg
 
@@ -478,10 +467,6 @@ class AppConfig:
             "mode1_refresh_immediate": self.mode1_refresh_immediate,
             "max_amount_clicks": self.max_amount_clicks,
 
-            "mode2_price_coord": list(self.mode2_price_coord),
-            "mode2_threshold": self.mode2_threshold,
-            "mode2_target_color_coord": list(self.mode2_target_color_coord),
-            "mode2_target_color_rgb": list(self.mode2_target_color_rgb),
             "scan_interval_ms": self.scan_interval_ms,
         }
 
@@ -800,8 +785,6 @@ class MainWindow(QMainWindow):
 
         self.mode1_thread: Optional[Mode1Worker] = None
 
-        # Macros for Mode 2
-        self.macro1 = MacroRecorder(self._log)
 
         # Global hotkeys
         self._gh_listener = None
@@ -816,9 +799,6 @@ class MainWindow(QMainWindow):
         def start_mode1():
             self._start_mode1()
 
-        def start_mode2():
-            self._start_mode2()
-
         def stop_all():
             self._stop_all()
 
@@ -826,11 +806,10 @@ class MainWindow(QMainWindow):
         try:
             self._gh_listener = GlobalHotKeys({
                 '<f8>': start_mode1,
-                '<shift>+<f8>': start_mode2,
                 '<f9>': stop_all
             })
             self._gh_listener.start()
-            self._log("全局热键已注册：F8=模式1，Shift+F8=模式2，F9=停止。若无效请用管理员运行。")
+            self._log("全局热键已注册：F8=模式1，F9=停止。若无效请用管理员运行。")
         except Exception as e:
             self._log(f"⚠️ 全局热键注册失败：{e}（可用窗口内快捷键代替）")
 
@@ -1120,7 +1099,6 @@ class MainWindow(QMainWindow):
     def _set_price1(self, r: 'Region'):
         self.cfg_mgr.config.price1_region = r
 
-
     # ---------------- Buttons ----------------
     def _on_load(self):
         try:
@@ -1285,6 +1263,7 @@ def main():
         else QMessageBox.information(win, "提示", "未检测到价格区域配置。\n请使用F3框选价格1区域，并保存配置。")
     ))
     sys.exit(app.exec())
+
 
 if __name__ == "__main__":
     main()
