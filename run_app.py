@@ -411,18 +411,11 @@ class AppConfig:
     max_amount_button: Tuple[int, int] = (0, 0)
 
     price1_region: Region = field(default_factory=lambda: Region(0, 0, 0, 0))
-    price2_region: Region = field(default_factory=lambda: Region(0, 0, 0, 0))
 
     # --- 模式1新逻辑 ---
     mode1_item_click_coord: Tuple[int, int] = (0, 0)  # 每轮先点击该货物
     mode1_refresh_immediate: bool = True  # 不符合后 立即 Esc+再点货物，立刻下一轮
     max_amount_clicks: int = 2  # 购买前点击“最大额度”按钮的次数
-
-    # 模式2 configuration
-    mode2_price_coord: Tuple[int, int] = (0, 0)
-    mode2_threshold: float = 0.0
-    mode2_target_color_coord: Tuple[int, int] = (0, 0)
-    mode2_target_color_rgb: Tuple[int, int, int] = (0, 255, 0)
 
     scan_interval_ms: int = 150  # OCR 周期（毫秒）
 
@@ -454,10 +447,6 @@ class AppConfig:
         cfg.mode1_refresh_immediate = bool(d.get("mode1_refresh_immediate", True))
         cfg.max_amount_clicks = int(d.get("max_amount_clicks", 2))
 
-        cfg.mode2_price_coord = _tuple("mode2_price_coord")
-        cfg.mode2_threshold = float(d.get("mode2_threshold", 0.0))
-        cfg.mode2_target_color_coord = _tuple("mode2_target_color_coord")
-        cfg.mode2_target_color_rgb = _color_tuple("mode2_target_color_rgb")
         cfg.scan_interval_ms = int(d.get("scan_interval_ms", 150))
         return cfg
 
@@ -469,17 +458,14 @@ class AppConfig:
             "buy_button": list(self.buy_button),
             "max_amount_button": list(self.max_amount_button),
             "price1_region": [self.price1_region.x, self.price1_region.y, self.price1_region.w, self.price1_region.h],
-            "price2_region": [self.price2_region.x, self.price2_region.y, self.price2_region.w, self.price2_region.h],
+            # 删除价格2区域配置
+            # "price2_region": [self.price2_region.x, self.price2_region.y, self.price2_region.w, self.price2_region.h],
 
             # 模式1新增
             "mode1_item_click_coord": list(self.mode1_item_click_coord),
             "mode1_refresh_immediate": self.mode1_refresh_immediate,
             "max_amount_clicks": self.max_amount_clicks,
 
-            "mode2_price_coord": list(self.mode2_price_coord),
-            "mode2_threshold": self.mode2_threshold,
-            "mode2_target_color_coord": list(self.mode2_target_color_coord),
-            "mode2_target_color_rgb": list(self.mode2_target_color_rgb),
             "scan_interval_ms": self.scan_interval_ms,
         }
 
@@ -600,7 +586,8 @@ class ConfigManager:
 class Mode1Worker(QtCore.QThread):
     log = Signal(str)
     finished = Signal()
-    price_signal = Signal(float, float)  # price1, price2 (last)
+    # 修改信号定义，删除价格2参数
+    price_signal = Signal(float)  # 只保留price1
 
     def __init__(self, config: AppConfig, ocr: OCRManager, stop_flag: threading.Event,
                  threshold: float, logger, parent=None):
@@ -638,15 +625,15 @@ class Mode1Worker(QtCore.QThread):
                 # 1) 点货物（始终先点）
                 self._refresh_item()
 
-                # 2) OCR 价格1 - 支持最多10次重试
+                # 2) OCR 价格1 - 添加调试代码
                 r1 = self.cfg.price1_region
                 p1 = None
                 retry_count = 0
                 max_retries = 10
-                
+
                 while p1 is None and retry_count < max_retries:
                     img1 = self.screen.grab_region((r1.x, r1.y, r1.w, r1.h))
-                    
+
                     # 添加调试代码：保存截图以便查看
                     global DEBUG
                     if DEBUG and retry_count == 0:
@@ -654,19 +641,20 @@ class Mode1Worker(QtCore.QThread):
                         cv2.imwrite("price1_debug.png", img1)
                         self.log.emit(f"已保存价格1区域截图到 price1_debug.png")
                         self.log.emit(f"价格1区域: x={r1.x}, y={r1.y}, w={r1.w}, h={r1.h}")
-                    
+
                     p1 = self.ocr.read_price_value(img1)
                     retry_count += 1
-                    
+
                     if p1 is None and retry_count < max_retries:
                         self.log.emit(f"[价格1] 第{retry_count}次识别失败，继续重试...")
                         # time.sleep(0.05)  # 短暂延迟后重试
 
                 if p1 is not None:
-                    self.price_signal.emit(p1, -1.0)
+                    # 修改信号发送，只发送价格1
+                    self.price_signal.emit(p1)
                     self.log.emit(f"[价格1] {p1} (尝试了{retry_count}次)")
                 else:
-                    self.log.emit(f"[价格1] 识别失败 (已尝试{max_retries}次)")
+                    self.log.emit("[价格1] 识别失败")
                     # 添加调试代码：尝试获取原始识别文本
                     raw_text = self.ocr.read_digital(img1, digits_only=False)
                     self.log.emit(f"[调试] 原始OCR文本: '{raw_text}'")
@@ -675,35 +663,22 @@ class Mode1Worker(QtCore.QThread):
                 if p1 is not None and p1 < self.threshold:
                     # 最大额度（多次点击）
                     self._click_max_amount()
-
-                    # OCR 价格2
-                    r2 = self.cfg.price2_region
-                    img2 = self.screen.grab_region((r2.x, r2.y, r2.w, r2.h))
-                    p2 = self.ocr.read_price_value(img2)
-                    if p2 is not None:
-                        self.price_signal.emit(p1, p2)
-                        self.log.emit(f"[价格2] {p2}")
-                    else:
-                        self.log.emit("[价格2] 识别失败")
-
-                    if p2 is not None and p2 < self.threshold:
-                        bx, by = self.cfg.buy_button
-                        Screen.click(bx, by)
-                        self.log.emit(f"✅ 触发购买！价格2={p2} 阈值={self.threshold}")
-                        bought = True
-                        if WAIT_AFTER_BUY:
-                            time.sleep(WAIT_AFTER_BUY)
-                        refresh_count = 0  # 购买成功后重置计数器
-                        
-                        # 购买成功后也按esc再点货物，开始新一轮循环
-                        Screen.press_esc()
-                        if WAIT_AFTER_ESC:
-                            time.sleep(WAIT_AFTER_ESC)
-                        if self.cfg.mode1_refresh_immediate:
-                            # 立即刷新，不等间隔
-                            # self._refresh_item()
-                            # 直接继续下一轮
-                            continue
+                    bx, by = self.cfg.buy_button
+                    Screen.click(bx, by)
+                    self.log.emit(f"✅ 触发购买！价格1={p1} 阈值={self.threshold}")
+                    bought = True
+                    if WAIT_AFTER_BUY:
+                        time.sleep(WAIT_AFTER_BUY)
+                    refresh_count = 0  # 购买成功后重置计数器
+                    # 购买成功后也按esc再点货物，开始新一轮循环
+                    Screen.press_esc()
+                    if WAIT_AFTER_ESC:
+                        time.sleep(WAIT_AFTER_ESC)
+                    if self.cfg.mode1_refresh_immediate:
+                        # 立即刷新，不等间隔
+                        # self._refresh_item()
+                        # 直接继续下一轮
+                        continue
 
                 # 4) 若本轮未买成：按 Esc → 再点货物（立即刷新到下一轮）
                 if not bought:
@@ -732,69 +707,6 @@ class Mode1Worker(QtCore.QThread):
             self.log.emit("模式1：已停止。")
         except Exception as e:
             self.log.emit("模式1线程异常：" + str(e))
-            self.log.emit(traceback.format_exc())
-        finally:
-            self.finished.emit()
-
-
-class Mode2Worker(QtCore.QThread):
-    log = Signal(str)
-    finished = Signal()
-
-    def __init__(self, config: AppConfig, ocr: OCRManager, stop_flag: threading.Event,
-                 op1: MacroRecorder, op2: MacroRecorder, logger, parent=None):
-        super().__init__(parent)
-        self.cfg = config
-        self.ocr = ocr
-        self.stop_flag = stop_flag
-        self.op1 = op1
-        self.op2 = op2
-        self.logger = logger
-        self.screen = Screen()
-
-    def run(self):
-        try:
-            self.log.emit("模式2：开始循环...")
-            interval = max(30, int(self.cfg.scan_interval_ms)) / 1000.0
-            while not self.stop_flag.is_set():
-                x, y = self.cfg.mode2_price_coord
-                region = (x - 40, y - 20, 80, 40)
-                img = self.screen.grab_region(region)
-                price = self.ocr.read_price_value(img)
-                if price is None:
-                    self.log.emit("价格识别失败，跳过。")
-                else:
-                    self.log.emit(f"[监控价格] {price} vs 阈值 {self.cfg.mode2_threshold}")
-                    if price > self.cfg.mode2_threshold:
-                        self.log.emit("执行 录制操作1 ...")
-                        self.op1.replay(stop_flag_callable=lambda: self.stop_flag.is_set())
-                    else:
-                        self.log.emit("执行 录制操作2 ...")
-                        self.op2.replay(stop_flag_callable=lambda: self.stop_flag.is_set())
-                        # 检测终止条件：像素颜色
-                        tx, ty = self.cfg.mode2_target_color_coord
-                        target = self.cfg.mode2_target_color_rgb
-                        px = Screen.get_pixel(tx, ty)
-                        self.log.emit(f"颜色检测: 当前={px}, 目标={target}")
-
-                        def close(a, b, tol=10):
-                            return all(abs(a[i] - b[i]) <= tol for i in range(3))
-
-                        if close(px, target, tol=10):
-                            self.log.emit("🎯 终止条件满足，退出模式2。")
-                            break
-
-                # wait interval with stop check
-                slept = 0.0
-                while slept < interval:
-                    if self.stop_flag.is_set():
-                        break
-                    t = min(0.02, interval - slept)
-                    time.sleep(t)
-                    slept += t
-            self.log.emit("模式2：已停止。")
-        except Exception as e:
-            self.log.emit("模式2线程异常：" + str(e))
             self.log.emit(traceback.format_exc())
         finally:
             self.finished.emit()
@@ -881,11 +793,7 @@ class MainWindow(QMainWindow):
         self.stop_flag = threading.Event()
 
         self.mode1_thread: Optional[Mode1Worker] = None
-        self.mode2_thread: Optional[Mode2Worker] = None
 
-        # Macros for Mode 2
-        self.macro1 = MacroRecorder(self._log)
-        self.macro2 = MacroRecorder(self._log)
 
         # Global hotkeys
         self._gh_listener = None
@@ -900,9 +808,6 @@ class MainWindow(QMainWindow):
         def start_mode1():
             self._start_mode1()
 
-        def start_mode2():
-            self._start_mode2()
-
         def stop_all():
             self._stop_all()
 
@@ -910,11 +815,10 @@ class MainWindow(QMainWindow):
         try:
             self._gh_listener = GlobalHotKeys({
                 '<f8>': start_mode1,
-                '<shift>+<f8>': start_mode2,
                 '<f9>': stop_all
             })
             self._gh_listener.start()
-            self._log("全局热键已注册：F8=模式1，Shift+F8=模式2，F9=停止。若无效请用管理员运行。")
+            self._log("全局热键已注册：F8=模式1，F9=停止。若无效请用管理员运行。")
         except Exception as e:
             self._log(f"⚠️ 全局热键注册失败：{e}（可用窗口内快捷键代替）")
 
@@ -932,7 +836,6 @@ class MainWindow(QMainWindow):
 
         self.tabs.addTab(self._build_config_tab(), "配置/坐标")
         self.tabs.addTab(self._build_mode1_tab(), "模式1：扫货")
-        self.tabs.addTab(self._build_mode2_tab(), "模式2：宏控制")
         self.tabs.addTab(self._build_log_tab(), "日志")
 
         # Global controls
@@ -979,6 +882,7 @@ class MainWindow(QMainWindow):
         grid = QGridLayout(w)
 
         # 修改 coord_row 函数
+        # 在_build_config_tab方法中修改coord_row函数
         def coord_row(label_text, getter, setter):
             row = QWidget()
             h = QHBoxLayout(row)
@@ -1009,18 +913,12 @@ class MainWindow(QMainWindow):
                 except:
                     pass
 
-            btn_load = QPushButton("读入")
-            btn_save = QPushButton("应用")
-            btn_load.clicked.connect(load_vals)
-            btn_save.clicked.connect(save_vals)
             # 添加这两行实现即时保存
             x.editingFinished.connect(save_vals)
             y.editingFinished.connect(save_vals)
             h.addWidget(x)
             h.addWidget(y)
             h.addWidget(pb)
-            h.addWidget(btn_load)
-            h.addWidget(btn_save)
 
             # 自动加载配置值到输入框
             load_vals()
@@ -1028,6 +926,7 @@ class MainWindow(QMainWindow):
             return row
 
         # 修改 region_row 函数
+        # 在_build_config_tab方法中修改region_row函数
         def region_row(label_text, getter, setter):
             row = QWidget()
             h = QHBoxLayout(row)
@@ -1049,16 +948,12 @@ class MainWindow(QMainWindow):
                 ))
                 overlay.show()
 
-            btn_apply = QPushButton("应用")
-
             def apply_region():
                 try:
                     setter(Region(int(ex.text()), int(ey.text()), int(ew.text()), int(eh.text())))
                     self._log(f"{label_text} 设置为 ({ex.text()},{ey.text()},{ew.text()},{eh.text()})")
                 except:
                     pass
-
-            btn_load = QPushButton("读入")
 
             def load_vals():
                 r = getter()
@@ -1068,8 +963,6 @@ class MainWindow(QMainWindow):
                 eh.setText(str(r.h))
 
             btn_pick.clicked.connect(pick_region)
-            btn_apply.clicked.connect(apply_region)
-            btn_load.clicked.connect(load_vals)
             # 添加这几行实现即时保存
             for edit in [ex, ey, ew, eh]:
                 edit.editingFinished.connect(apply_region)
@@ -1078,8 +971,6 @@ class MainWindow(QMainWindow):
             h.addWidget(ew)
             h.addWidget(eh)
             h.addWidget(btn_pick)
-            h.addWidget(btn_load)
-            h.addWidget(btn_apply)
 
             # 自动加载配置值到输入框
             load_vals()
@@ -1092,7 +983,8 @@ class MainWindow(QMainWindow):
         grid.addWidget(coord_row("购买按钮", lambda: self.cfg_mgr.config.buy_button, self._set_buy), 3, 0)
         grid.addWidget(coord_row("最大额度按钮", lambda: self.cfg_mgr.config.max_amount_button, self._set_max), 4, 0)
         grid.addWidget(region_row("价格1区域", lambda: self.cfg_mgr.config.price1_region, self._set_price1), 5, 0)
-        grid.addWidget(region_row("价格2区域", lambda: self.cfg_mgr.config.price2_region, self._set_price2), 6, 0)
+        # 删除价格2区域配置行
+        # grid.addWidget(region_row("价格2区域", lambda: self.cfg_mgr.config.price2_region, self._set_price2), 6, 0)
 
         # （模式1）货物点击坐标 + 立即刷新开关 + 最大额度点击次数
         grid.addWidget(coord_row("（模式1）货物点击坐标",
@@ -1154,90 +1046,10 @@ class MainWindow(QMainWindow):
         v.addLayout(h)
 
         self.lbl_price1 = QLabel("价格1：-")
-        self.lbl_price2 = QLabel("价格2：-")
+        # 删除价格2标签
+        # self.lbl_price2 = QLabel("价格2：-")
         v.addWidget(self.lbl_price1)
-        v.addWidget(self.lbl_price2)
-
-        return w
-
-    def _build_mode2_tab(self):
-        w = QWidget()
-        grid = QGridLayout(w)
-
-        # price coord
-        self.btn_pick_price_coord = DragPickButton("拖到价格坐标处（松开记录）")
-        self.btn_pick_price_coord.coordPicked.connect(lambda x, y: self._set_mode2_price_coord((x, y)))
-        grid.addWidget(QLabel("价格坐标："), 0, 0)
-        self.mode2_x = QLineEdit()
-        self.mode2_x.setPlaceholderText("x")
-        self.mode2_y = QLineEdit()
-        self.mode2_y.setPlaceholderText("y")
-        grid.addWidget(self.mode2_x, 0, 1)
-        grid.addWidget(self.mode2_y, 0, 2)
-        grid.addWidget(self.btn_pick_price_coord, 0, 3)
-
-        # threshold
-        grid.addWidget(QLabel("价格阈值："), 1, 0)
-        self.mode2_threshold = QLineEdit(str(self.cfg_mgr.config.mode2_threshold))
-        grid.addWidget(self.mode2_threshold, 1, 1)
-
-        # target color
-        grid.addWidget(QLabel("终止条件颜色坐标："), 2, 0)
-        self.btn_pick_color_coord = DragPickButton("拖到像素位置")
-        self.btn_pick_color_coord.coordPicked.connect(lambda x, y: self._set_mode2_color_coord((x, y)))
-        self.mode2_color_x = QLineEdit()
-        self.mode2_color_x.setPlaceholderText("x")
-        self.mode2_color_y = QLineEdit()
-        self.mode2_color_y.setPlaceholderText("y")
-        grid.addWidget(self.mode2_color_x, 2, 1)
-        grid.addWidget(self.mode2_color_y, 2, 2)
-        grid.addWidget(self.btn_pick_color_coord, 2, 3)
-
-        grid.addWidget(QLabel("目标颜色(R,G,B)："), 3, 0)
-        self.mode2_color_r = QLineEdit(str(self.cfg_mgr.config.mode2_target_color_rgb[0]))
-        self.mode2_color_g = QLineEdit(str(self.cfg_mgr.config.mode2_target_color_rgb[1]))
-        self.mode2_color_b = QLineEdit(str(self.cfg_mgr.config.mode2_target_color_rgb[2]))
-        btn_pick_color = QPushButton("颜色选择器")
-
-        def pick_color():
-            c = QColorDialog.getColor()
-            if c.isValid():
-                self.mode2_color_r.setText(str(c.red()))
-                self.mode2_color_g.setText(str(c.green()))
-                self.mode2_color_b.setText(str(c.blue()))
-
-        grid.addWidget(self.mode2_color_r, 3, 1)
-        grid.addWidget(self.mode2_color_g, 3, 2)
-        grid.addWidget(self.mode2_color_b, 3, 3)
-        grid.addWidget(btn_pick_color, 3, 4)
-
-        # macro recorders
-        self.btn_rec1 = QPushButton("录制操作1（再点停止）")
-        self.btn_stop_rec1 = QPushButton("停止录制1")
-        self.btn_play1 = QPushButton("回放操作1")
-        self.btn_rec2 = QPushButton("录制操作2（再点停止）")
-        self.btn_stop_rec2 = QPushButton("停止录制2")
-        self.btn_play2 = QPushButton("回放操作2")
-        self.btn_rec1.clicked.connect(lambda: self.macro1.start())
-        self.btn_stop_rec1.clicked.connect(lambda: self.macro1.stop())
-        self.btn_play1.clicked.connect(lambda: self.macro1.replay(stop_flag_callable=lambda: self.stop_flag.is_set()))
-        self.btn_rec2.clicked.connect(lambda: self.macro2.start())
-        self.btn_stop_rec2.clicked.connect(lambda: self.macro2.stop())
-        self.btn_play2.clicked.connect(lambda: self.macro2.replay(stop_flag_callable=lambda: self.stop_flag.is_set()))
-        grid.addWidget(self.btn_rec1, 4, 0)
-        grid.addWidget(self.btn_stop_rec1, 4, 1)
-        grid.addWidget(self.btn_play1, 4, 2)
-        grid.addWidget(self.btn_rec2, 5, 0)
-        grid.addWidget(self.btn_stop_rec2, 5, 1)
-        grid.addWidget(self.btn_play2, 5, 2)
-
-        # controls
-        self.btn_mode2_start = QPushButton("开始模式2（Shift+F8 / 全局Shift+F8）")
-        self.btn_mode2_stop = QPushButton("停止（F9 / 全局F9）")
-        self.btn_mode2_start.clicked.connect(self._start_mode2)
-        self.btn_mode2_stop.clicked.connect(self._stop_all)
-        grid.addWidget(self.btn_mode2_start, 6, 0)
-        grid.addWidget(self.btn_mode2_stop, 6, 1)
+        # v.addWidget(self.lbl_price2)
 
         return w
 
@@ -1260,13 +1072,7 @@ class MainWindow(QMainWindow):
                 overlay.show()
                 return True
             elif key == Qt.Key_F8:
-                idx = self.tabs.currentIndex()
-                if idx == 1:
-                    self._start_mode1()
-                elif idx == 2:
-                    self._start_mode2()
-                else:
-                    self._start_mode1()
+                self._start_mode1()
                 return True
             elif key == Qt.Key_F9:
                 self._stop_all()
@@ -1302,14 +1108,6 @@ class MainWindow(QMainWindow):
     def _set_price1(self, r: 'Region'):
         self.cfg_mgr.config.price1_region = r
 
-    def _set_price2(self, r: 'Region'):
-        self.cfg_mgr.config.price2_region = r
-
-    def _set_mode2_price_coord(self, xy):
-        self.cfg_mgr.config.mode2_price_coord = xy
-        self.mode2_x.setText(str(xy[0]))
-        self.mode2_y.setText(str(xy[1]))
-
     # ---------------- Buttons ----------------
     def _on_load(self):
         try:
@@ -1332,9 +1130,6 @@ class MainWindow(QMainWindow):
 
                 # refresh UI reflect critical fields
                 self.spin_interval.setValue(self.cfg_mgr.config.scan_interval_ms)
-                self.mode2_threshold.setText(str(self.cfg_mgr.config.mode2_threshold))
-                self.mode2_x.setText(str(self.cfg_mgr.config.mode2_price_coord[0]))
-                self.mode2_y.setText(str(self.cfg_mgr.config.mode2_price_coord[1]))
                 # 模式1新增字段
                 self.cb_refresh_immediate.setChecked(self.cfg_mgr.config.mode1_refresh_immediate)
                 self.spin_max_clicks.setValue(self.cfg_mgr.config.max_amount_clicks)
@@ -1350,9 +1145,6 @@ class MainWindow(QMainWindow):
             if self.cfg_mgr.switch_config(config_name):
                 # 刷新UI以反映配置更改
                 self.spin_interval.setValue(self.cfg_mgr.config.scan_interval_ms)
-                self.mode2_threshold.setText(str(self.cfg_mgr.config.mode2_threshold))
-                self.mode2_x.setText(str(self.cfg_mgr.config.mode2_price_coord[0]))
-                self.mode2_y.setText(str(self.cfg_mgr.config.mode2_price_coord[1]))
                 # 模式1相关配置
                 self.cb_refresh_immediate.setChecked(self.cfg_mgr.config.mode1_refresh_immediate)
                 self.spin_max_clicks.setValue(self.cfg_mgr.config.max_amount_clicks)
@@ -1375,10 +1167,6 @@ class MainWindow(QMainWindow):
     def _on_save(self):
         try:
             try:
-                self.cfg_mgr.config.mode2_threshold = float(self.mode2_threshold.text() or "0")
-            except:
-                pass
-            try:
                 self.cfg_mgr.config.scan_interval_ms = int(self.spin_interval.value())
             except:
                 pass
@@ -1390,10 +1178,6 @@ class MainWindow(QMainWindow):
     def _on_save_as(self):
         try:
             # 更新配置对象中的值
-            try:
-                self.cfg_mgr.config.mode2_threshold = float(self.mode2_threshold.text() or "0")
-            except:
-                pass
             try:
                 self.cfg_mgr.config.scan_interval_ms = int(self.spin_interval.value())
             except:
@@ -1453,36 +1237,17 @@ class MainWindow(QMainWindow):
         self.mode1_thread.start()
         self._log("模式1启动。")
 
-    def _start_mode2(self):
-        if self.mode2_thread and self.mode2_thread.isRunning():
-            self._log("模式2已在运行。")
-            return
-        try:
-            self.cfg_mgr.config.mode2_price_coord = (int(self.mode2_x.text()), int(self.mode2_y.text()))
-        except:
-            pass
-        try:
-            self.cfg_mgr.config.mode2_threshold = float(self.mode2_threshold.text())
-        except:
-            pass
-
-        self.stop_flag.clear()
-        self.mode2_thread = Mode2Worker(self.cfg_mgr.config, self.ocr, self.stop_flag,
-                                        self.macro1, self.macro2, logger=self._log)
-        self.mode2_thread.log.connect(self._log)
-        self.mode2_thread.finished.connect(lambda: self._log("模式2线程结束"))
-        self.mode2_thread.start()
-        self._log("模式2启动。")
-
     def _stop_all(self):
         self.stop_flag.set()
         self._log("已请求停止（F9 / 全局F9）。")
 
-    def _on_price_update(self, p1, p2):
+    def _on_price_update(self, p1):
+        # 修改价格更新方法，只处理价格1
         if p1 >= 0:
             self.lbl_price1.setText(f"价格1：{p1}")
-        if p2 >= 0:
-            self.lbl_price2.setText(f"价格2：{p2}")
+        # 删除价格2更新代码
+        # if p2 >= 0:
+        #     self.lbl_price2.setText(f"价格2：{p2}")
 
     def _log(self, s: str):
         ts = time.strftime("%H:%M:%S")
@@ -1501,8 +1266,10 @@ def main():
 
     # “几秒后没有配置则提示配置”
     QtCore.QTimer.singleShot(3500, lambda: (
-        None if (win.cfg_mgr.config.price1_region.w > 0 and win.cfg_mgr.config.price2_region.w > 0)
-        else QMessageBox.information(win, "提示", "未检测到价格区域配置。\n请使用F3框选价格1/价格2区域，并保存配置。")
+        None if (win.cfg_mgr.config.price1_region.w > 0)
+        # 删除价格2区域检查
+        # else QMessageBox.information(win, "提示", "未检测到价格区域配置。\n请使用F3框选价格1/价格2区域，并保存配置。")
+        else QMessageBox.information(win, "提示", "未检测到价格区域配置。\n请使用F3框选价格1区域，并保存配置。")
     ))
     sys.exit(app.exec())
 
