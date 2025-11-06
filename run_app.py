@@ -982,6 +982,7 @@ class MainWindow(QMainWindow):
             def on_pick(px, py):
                 x.setText(str(px))
                 y.setText(str(py))
+                save_vals()
 
             pb.coordPicked.connect(on_pick)
 
@@ -1033,7 +1034,7 @@ class MainWindow(QMainWindow):
             def pick_region():
                 overlay = RegionPickerOverlay()
                 overlay.regionSelected.connect(lambda x, y, w, h: (
-                    ex.setText(str(x)), ey.setText(str(y)), ew.setText(str(w)), eh.setText(str(h))
+                    ex.setText(str(x)), ey.setText(str(y)), ew.setText(str(w)), eh.setText(str(h)), apply_region()
                 ))
                 overlay.show()
 
