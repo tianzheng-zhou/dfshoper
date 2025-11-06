@@ -968,6 +968,7 @@ class MainWindow(QMainWindow):
         grid = QGridLayout(w)
 
         # 修改 coord_row 函数
+        # 在_build_config_tab方法中修改coord_row函数
         def coord_row(label_text, getter, setter):
             row = QWidget()
             h = QHBoxLayout(row)
@@ -978,44 +979,39 @@ class MainWindow(QMainWindow):
             y.setPlaceholderText("y")
             pb = DragPickButton("拖我到目标地址（松开即记录）")
             pb.setFixedWidth(220)
-
+        
             def on_pick(px, py):
                 x.setText(str(px))
                 y.setText(str(py))
-
+        
             pb.coordPicked.connect(on_pick)
-
+        
             def load_vals():
                 vx, vy = getter()
                 x.setText(str(vx))
                 y.setText(str(vy))
-
+        
             def save_vals():
                 try:
                     setter((int(x.text()), int(y.text())))
                     self._log(f"{label_text} 坐标设置为 {x.text()},{y.text()}")
                 except:
                     pass
-
-            btn_load = QPushButton("读入")
-            btn_save = QPushButton("应用")
-            btn_load.clicked.connect(load_vals)
-            btn_save.clicked.connect(save_vals)
+        
             # 添加这两行实现即时保存
             x.editingFinished.connect(save_vals)
             y.editingFinished.connect(save_vals)
             h.addWidget(x)
             h.addWidget(y)
             h.addWidget(pb)
-            h.addWidget(btn_load)
-            h.addWidget(btn_save)
-
+        
             # 自动加载配置值到输入框
             load_vals()
-
+        
             return row
-
+        
         # 修改 region_row 函数
+        # 在_build_config_tab方法中修改region_row函数
         def region_row(label_text, getter, setter):
             row = QWidget()
             h = QHBoxLayout(row)
@@ -1029,35 +1025,29 @@ class MainWindow(QMainWindow):
             eh = QLineEdit()
             eh.setPlaceholderText("h")
             btn_pick = QPushButton("框选区域(F3)")
-
+        
             def pick_region():
                 overlay = RegionPickerOverlay()
                 overlay.regionSelected.connect(lambda x, y, w, h: (
                     ex.setText(str(x)), ey.setText(str(y)), ew.setText(str(w)), eh.setText(str(h))
                 ))
                 overlay.show()
-
-            btn_apply = QPushButton("应用")
-
+        
             def apply_region():
                 try:
                     setter(Region(int(ex.text()), int(ey.text()), int(ew.text()), int(eh.text())))
                     self._log(f"{label_text} 设置为 ({ex.text()},{ey.text()},{ew.text()},{eh.text()})")
                 except:
                     pass
-
-            btn_load = QPushButton("读入")
-
+        
             def load_vals():
                 r = getter()
                 ex.setText(str(r.x))
                 ey.setText(str(r.y))
                 ew.setText(str(r.w))
                 eh.setText(str(r.h))
-
+        
             btn_pick.clicked.connect(pick_region)
-            btn_apply.clicked.connect(apply_region)
-            btn_load.clicked.connect(load_vals)
             # 添加这几行实现即时保存
             for edit in [ex, ey, ew, eh]:
                 edit.editingFinished.connect(apply_region)
@@ -1066,9 +1056,7 @@ class MainWindow(QMainWindow):
             h.addWidget(ew)
             h.addWidget(eh)
             h.addWidget(btn_pick)
-            h.addWidget(btn_load)
-            h.addWidget(btn_apply)
-
+        
             # 自动加载配置值到输入框
             load_vals()
             return row
