@@ -412,7 +412,7 @@ class AppConfig:
     max_amount_button: Tuple[int, int] = (0, 0)
 
     price1_region: Region = field(default_factory=lambda: Region(0, 0, 0, 0))
-    price2_region: Region = field(default_factory=lambda: Region(0, 0, 0, 0))
+
 
     # --- 模式1新逻辑 ---
     mode1_item_click_coord: Tuple[int, int] = (0, 0)  # 每轮先点击该货物
@@ -470,7 +470,8 @@ class AppConfig:
             "buy_button": list(self.buy_button),
             "max_amount_button": list(self.max_amount_button),
             "price1_region": [self.price1_region.x, self.price1_region.y, self.price1_region.w, self.price1_region.h],
-            "price2_region": [self.price2_region.x, self.price2_region.y, self.price2_region.w, self.price2_region.h],
+            # 删除价格2区域配置
+            # "price2_region": [self.price2_region.x, self.price2_region.y, self.price2_region.w, self.price2_region.h],
 
             # 模式1新增
             "mode1_item_click_coord": list(self.mode1_item_click_coord),
@@ -601,7 +602,8 @@ class ConfigManager:
 class Mode1Worker(QtCore.QThread):
     log = Signal(str)
     finished = Signal()
-    price_signal = Signal(float, float)  # price1, price2 (last)
+    # 修改信号定义，删除价格2参数
+    price_signal = Signal(float)  # 只保留price1
 
     def __init__(self, config: AppConfig, ocr: OCRManager, stop_flag: threading.Event,
                  threshold: float, logger, parent=None):
@@ -664,7 +666,8 @@ class Mode1Worker(QtCore.QThread):
                     p1 = self.ocr.read_price_value(img1_retry)
 
                 if p1 is not None:
-                    self.price_signal.emit(p1, -1.0)
+                    # 修改信号发送，只发送价格1
+                    self.price_signal.emit(p1)
                     self.log.emit(f"[价格1] {p1}")
                 else:
                     self.log.emit("[价格1] 识别失败")
@@ -676,24 +679,12 @@ class Mode1Worker(QtCore.QThread):
                 if p1 is not None and p1 < self.threshold:
                     # 最大额度（多次点击）
                     self._click_max_amount()
-
-                    # OCR 价格2
-                    r2 = self.cfg.price2_region
-                    img2 = self.screen.grab_region((r2.x, r2.y, r2.w, r2.h))
-                    p2 = self.ocr.read_price_value(img2)
-                    if p2 is not None:
-                        self.price_signal.emit(p1, p2)
-                        self.log.emit(f"[价格2] {p2}")
-                    else:
-                        self.log.emit("[价格2] 识别失败")
-
-                    if p2 is not None and p2 < self.threshold:
-                        bx, by = self.cfg.buy_button
-                        Screen.click(bx, by)
-                        self.log.emit(f"✅ 触发购买！价格2={p2} 阈值={self.threshold}")
-                        bought = True
-                        time.sleep(WAIT_AFTER_BUY)
-                        refresh_count = 0  # 购买成功后重置计数器
+                    bx, by = self.cfg.buy_button
+                    Screen.click(bx, by)
+                    self.log.emit(f"✅ 触发购买！价格1={p1} 阈值={self.threshold}")
+                    bought = True
+                    time.sleep(WAIT_AFTER_BUY)
+                    refresh_count = 0  # 购买成功后重置计数器
 
                 # 4) 若本轮未买成：按 Esc → 再点货物（立即刷新到下一轮）
                 if not bought:
@@ -1003,7 +994,8 @@ class MainWindow(QMainWindow):
         grid.addWidget(coord_row("购买按钮", lambda: self.cfg_mgr.config.buy_button, self._set_buy), 3, 0)
         grid.addWidget(coord_row("最大额度按钮", lambda: self.cfg_mgr.config.max_amount_button, self._set_max), 4, 0)
         grid.addWidget(region_row("价格1区域", lambda: self.cfg_mgr.config.price1_region, self._set_price1), 5, 0)
-        grid.addWidget(region_row("价格2区域", lambda: self.cfg_mgr.config.price2_region, self._set_price2), 6, 0)
+        # 删除价格2区域配置行
+        # grid.addWidget(region_row("价格2区域", lambda: self.cfg_mgr.config.price2_region, self._set_price2), 6, 0)
 
         # （模式1）货物点击坐标 + 立即刷新开关 + 最大额度点击次数
         grid.addWidget(coord_row("（模式1）货物点击坐标",
@@ -1065,9 +1057,10 @@ class MainWindow(QMainWindow):
         v.addLayout(h)
 
         self.lbl_price1 = QLabel("价格1：-")
-        self.lbl_price2 = QLabel("价格2：-")
+        # 删除价格2标签
+        # self.lbl_price2 = QLabel("价格2：-")
         v.addWidget(self.lbl_price1)
-        v.addWidget(self.lbl_price2)
+        # v.addWidget(self.lbl_price2)
 
         return w
 
@@ -1126,8 +1119,9 @@ class MainWindow(QMainWindow):
     def _set_price1(self, r: 'Region'):
         self.cfg_mgr.config.price1_region = r
 
-    def _set_price2(self, r: 'Region'):
-        self.cfg_mgr.config.price2_region = r
+    # 删除价格2设置方法
+    # def _set_price2(self, r: 'Region'):
+    #     self.cfg_mgr.config.price2_region = r
 
     def _set_mode2_price_coord(self, xy):
         self.cfg_mgr.config.mode2_price_coord = xy
@@ -1267,11 +1261,13 @@ class MainWindow(QMainWindow):
         self.stop_flag.set()
         self._log("已请求停止（F9 / 全局F9）。")
 
-    def _on_price_update(self, p1, p2):
+    def _on_price_update(self, p1):
+        # 修改价格更新方法，只处理价格1
         if p1 >= 0:
             self.lbl_price1.setText(f"价格1：{p1}")
-        if p2 >= 0:
-            self.lbl_price2.setText(f"价格2：{p2}")
+        # 删除价格2更新代码
+        # if p2 >= 0:
+        #     self.lbl_price2.setText(f"价格2：{p2}")
 
     def _log(self, s: str):
         ts = time.strftime("%H:%M:%S")
@@ -1290,11 +1286,12 @@ def main():
 
     # “几秒后没有配置则提示配置”
     QtCore.QTimer.singleShot(3500, lambda: (
-        None if (win.cfg_mgr.config.price1_region.w > 0 and win.cfg_mgr.config.price2_region.w > 0)
-        else QMessageBox.information(win, "提示", "未检测到价格区域配置。\n请使用F3框选价格1/价格2区域，并保存配置。")
+        None if (win.cfg_mgr.config.price1_region.w > 0)
+        # 删除价格2区域检查
+        # else QMessageBox.information(win, "提示", "未检测到价格区域配置。\n请使用F3框选价格1/价格2区域，并保存配置。")
+        else QMessageBox.information(win, "提示", "未检测到价格区域配置。\n请使用F3框选价格1区域，并保存配置。")
     ))
     sys.exit(app.exec())
-
 
 if __name__ == "__main__":
     main()
