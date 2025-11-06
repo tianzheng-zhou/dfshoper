@@ -280,6 +280,7 @@ class MacroRecorder:
     方法2：宏相关
 
     """
+
     def __init__(self, logger):
         self.logger = logger
         self.events: List[MacroEvent] = []
@@ -650,6 +651,16 @@ class Mode1Worker(QtCore.QThread):
                         # time.sleep(0.05)  # 短暂延迟后重试
 
                 if p1 is not None:
+                    if p1 <= 10:
+                        self.log.emit(f"[价格1] {p1} (尝试了{retry_count}次) 识别异常，价格过低")
+                        self.log.emit("[价格1] 识别失败")
+                        import cv2
+                        img1 = self.screen.grab_region((r1.x, r1.y, r1.w, r1.h))
+                        cv2.imwrite("price1_debug_error.png", img1)
+                        self.log.emit(f"已保存价格1区域截图到 price1_debug_error.png")
+                        self.log.emit(f"价格1区域: x={r1.x}, y={r1.y}, w={r1.w}, h={r1.h}")
+                        p1 = None
+
                     # 修改信号发送，只发送价格1
                     self.price_signal.emit(p1)
                     self.log.emit(f"[价格1] {p1} (尝试了{retry_count}次)")
@@ -793,7 +804,6 @@ class MainWindow(QMainWindow):
         self.stop_flag = threading.Event()
 
         self.mode1_thread: Optional[Mode1Worker] = None
-
 
         # Global hotkeys
         self._gh_listener = None
