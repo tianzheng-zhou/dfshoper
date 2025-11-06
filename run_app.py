@@ -616,14 +616,16 @@ class Mode1Worker(QtCore.QThread):
         ix, iy = self.cfg.mode1_item_click_coord
         if ix or iy:
             Screen.click(ix, iy)
-            time.sleep(WAIT_REFRESH_ITEM)
+            if WAIT_REFRESH_ITEM:
+                time.sleep(WAIT_REFRESH_ITEM)
 
     def _click_max_amount(self):
         x, y = self.cfg.max_amount_button
         clicks = max(1, int(self.cfg.max_amount_clicks))
         for _ in range(clicks):
             Screen.click(x, y)
-            time.sleep(WAIT_CLICK_MAX_AMOUNT)
+            if WAIT_CLICK_MAX_AMOUNT:
+                time.sleep(WAIT_CLICK_MAX_AMOUNT)
 
     def run(self):
         try:
@@ -691,8 +693,19 @@ class Mode1Worker(QtCore.QThread):
                         Screen.click(bx, by)
                         self.log.emit(f"✅ 触发购买！价格2={p2} 阈值={self.threshold}")
                         bought = True
-                        time.sleep(WAIT_AFTER_BUY)
+                        if WAIT_AFTER_BUY:
+                            time.sleep(WAIT_AFTER_BUY)
                         refresh_count = 0  # 购买成功后重置计数器
+                        
+                        # 购买成功后也按esc再点货物，开始新一轮循环
+                        Screen.press_esc()
+                        if WAIT_AFTER_ESC:
+                            time.sleep(WAIT_AFTER_ESC)
+                        if self.cfg.mode1_refresh_immediate:
+                            # 立即刷新，不等间隔
+                            # self._refresh_item()
+                            # 直接继续下一轮
+                            continue
 
                 # 4) 若本轮未买成：按 Esc → 再点货物（立即刷新到下一轮）
                 if not bought:
@@ -700,7 +713,7 @@ class Mode1Worker(QtCore.QThread):
                     time.sleep(WAIT_AFTER_ESC)
                     if self.cfg.mode1_refresh_immediate:
                         # 立即刷新，不等间隔
-                        self._refresh_item()
+                        # self._refresh_item()
                         refresh_count += 1  # 增加刷新计数
                         # 检查是否需要插入等待
                         if refresh_count % 300 == 0:
