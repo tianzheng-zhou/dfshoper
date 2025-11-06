@@ -178,7 +178,7 @@ class OCRManager:
             print(f"保存调试图像失败: {e}")
 
     # 修改read_text方法，添加保存调试图像功能
-    def read_text(self, img_bgr: np.ndarray, digits_only: bool = True) -> str:
+    def read_digital(self, img_bgr: np.ndarray, digits_only: bool = True) -> str:
         """
         Return best numeric text detected in the image.
         """
@@ -219,7 +219,7 @@ class OCRManager:
 
     # 修改read_price_value方法的数值转换逻辑
     def read_price_value(self, img_bgr: np.ndarray) -> Optional[int]:
-        s = self.read_text(img_bgr, digits_only=True)
+        s = self.read_digital(img_bgr, digits_only=True)
         if not s:
             return None
         try:
@@ -245,7 +245,7 @@ class Screen:
     def grab_region(self, region: Tuple[int, int, int, int]) -> np.ndarray:
         """
         region: (x, y, w, h)  -> BGR image
-"""
+        """
         self._ensure_ctx()
         x, y, w, h = region
         monitor = {"left": int(x), "top": int(y), "width": int(w), "height": int(h)}
@@ -276,6 +276,10 @@ class MacroEvent:
 
 
 class MacroRecorder:
+    """
+    方法2：宏相关
+
+    """
     def __init__(self, logger):
         self.logger = logger
         self.events: List[MacroEvent] = []
@@ -426,7 +430,7 @@ class AppConfig:
     def from_json(d: Dict[str, Any]):
         def _tuple(name, default=(0, 0)):
             v = d.get(name, list(default))
-            return (int(v[0]), int(v[1]))
+            return int(v[0]), int(v[1])
 
         def _region(name):
             v = d.get(name, [0, 0, 0, 0])
@@ -434,7 +438,7 @@ class AppConfig:
 
         def _color_tuple(name, default=(0, 255, 0)):
             v = d.get(name, list(default))
-            return (int(v[0]), int(v[1]), int(v[2]))
+            return int(v[0]), int(v[1]), int(v[2])
 
         cfg = AppConfig()
         cfg.trade_button = _tuple("trade_button")
@@ -664,7 +668,7 @@ class Mode1Worker(QtCore.QThread):
                 else:
                     self.log.emit("[价格1] 识别失败")
                     # 添加调试代码：尝试获取原始识别文本
-                    raw_text = self.ocr.read_text(img1, digits_only=False)
+                    raw_text = self.ocr.read_digital(img1, digits_only=False)
                     self.log.emit(f"[调试] 原始OCR文本: '{raw_text}'")
 
                 # 3) 判定 & 购买流程
@@ -1093,7 +1097,7 @@ class MainWindow(QMainWindow):
 
         h2.addWidget(QLabel("最大额度点击次数："))
         self.spin_max_clicks = QSpinBox()
-        self.spin_max_clicks.setRange(1, 5)
+        self.spin_max_clicks.setRange(0, 5)
         self.spin_max_clicks.setValue(self.cfg_mgr.config.max_amount_clicks)
         self.spin_max_clicks.valueChanged.connect(lambda v: setattr(self.cfg_mgr.config, "max_amount_clicks", int(v)))
         h2.addWidget(self.spin_max_clicks)

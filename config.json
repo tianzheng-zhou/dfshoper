@@ -1,6 +1,6 @@
 {
   "trade_button": [
-    575,
+    277,
     45
   ],
   "main_menu_button": [
@@ -12,12 +12,12 @@
     359
   ],
   "buy_button": [
-    1700,
-    850
+    1770,
+    922
   ],
   "max_amount_button": [
-    1700,
-    880
+    1748,
+    838
   ],
   "price1_region": [
     297,
