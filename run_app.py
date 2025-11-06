@@ -638,37 +638,35 @@ class Mode1Worker(QtCore.QThread):
                 # 1) 点货物（始终先点）
                 self._refresh_item()
 
-                # 2) OCR 价格1 - 添加调试代码
+                # 2) OCR 价格1 - 支持最多10次重试
                 r1 = self.cfg.price1_region
-                img1 = self.screen.grab_region((r1.x, r1.y, r1.w, r1.h))
-
-                # 添加调试代码：保存截图以便查看
-                # 全局DEBUG开关
-                global DEBUG
-                if DEBUG:
-                    import cv2
-                    cv2.imwrite("price1_debug.png", img1)
-                    self.log.emit(f"已保存价格1区域截图到 price1_debug.png")
-
-                    # 添加调试代码：显示区域信息
-                    self.log.emit(f"价格1区域: x={r1.x}, y={r1.y}, w={r1.w}, h={r1.h}")
-
-                # 初始OCR识别
-                p1 = self.ocr.read_price_value(img1)
-
-                # 如果识别失败，重新截取图片并再次尝试识别
-                if p1 is None:
-                    self.log.emit("[价格1] 首次识别失败，重新截取图片并再次尝试...")
-                    # 重新截取图片
-                    img1_retry = self.screen.grab_region((r1.x, r1.y, r1.w, r1.h))
-                    # 再次进行OCR识别
-                    p1 = self.ocr.read_price_value(img1_retry)
+                p1 = None
+                retry_count = 0
+                max_retries = 10
+                
+                while p1 is None and retry_count < max_retries:
+                    img1 = self.screen.grab_region((r1.x, r1.y, r1.w, r1.h))
+                    
+                    # 添加调试代码：保存截图以便查看
+                    global DEBUG
+                    if DEBUG and retry_count == 0:
+                        import cv2
+                        cv2.imwrite("price1_debug.png", img1)
+                        self.log.emit(f"已保存价格1区域截图到 price1_debug.png")
+                        self.log.emit(f"价格1区域: x={r1.x}, y={r1.y}, w={r1.w}, h={r1.h}")
+                    
+                    p1 = self.ocr.read_price_value(img1)
+                    retry_count += 1
+                    
+                    if p1 is None and retry_count < max_retries:
+                        self.log.emit(f"[价格1] 第{retry_count}次识别失败，继续重试...")
+                        # time.sleep(0.05)  # 短暂延迟后重试
 
                 if p1 is not None:
                     self.price_signal.emit(p1, -1.0)
-                    self.log.emit(f"[价格1] {p1}")
+                    self.log.emit(f"[价格1] {p1} (尝试了{retry_count}次)")
                 else:
-                    self.log.emit("[价格1] 识别失败")
+                    self.log.emit(f"[价格1] 识别失败 (已尝试{max_retries}次)")
                     # 添加调试代码：尝试获取原始识别文本
                     raw_text = self.ocr.read_digital(img1, digits_only=False)
                     self.log.emit(f"[调试] 原始OCR文本: '{raw_text}'")
