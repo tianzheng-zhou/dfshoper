@@ -629,7 +629,7 @@ class Mode1Worker(QtCore.QThread):
                 r1 = self.cfg.price1_region
                 p1 = None
                 retry_count = 0
-                max_retries = 10
+                max_retries = 50
 
                 while p1 is None and retry_count < max_retries:
                     img1 = self.screen.grab_region((r1.x, r1.y, r1.w, r1.h))
