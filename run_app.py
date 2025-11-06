@@ -1120,14 +1120,6 @@ class MainWindow(QMainWindow):
     def _set_price1(self, r: 'Region'):
         self.cfg_mgr.config.price1_region = r
 
-    # 删除价格2设置方法
-    # def _set_price2(self, r: 'Region'):
-    #     self.cfg_mgr.config.price2_region = r
-
-    def _set_mode2_price_coord(self, xy):
-        self.cfg_mgr.config.mode2_price_coord = xy
-        self.mode2_x.setText(str(xy[0]))
-        self.mode2_y.setText(str(xy[1]))
 
     # ---------------- Buttons ----------------
     def _on_load(self):
