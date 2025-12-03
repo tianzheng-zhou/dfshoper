@@ -12,20 +12,14 @@
     359
   ],
   "buy_button": [
-    1770,
-    922
+    1728,
+    926
   ],
   "max_amount_button": [
-    1748,
+    1750,
     838
   ],
   "price1_region": [
-    297,
-    175,
-    150,
-    25
-  ],
-  "price2_region": [
     297,
     175,
     150,
@@ -36,20 +30,6 @@
     237
   ],
   "mode1_refresh_immediate": true,
-  "max_amount_clicks": 1,
-  "mode2_price_coord": [
-    0,
-    0
-  ],
-  "mode2_threshold": 0.0,
-  "mode2_target_color_coord": [
-    0,
-    0
-  ],
-  "mode2_target_color_rgb": [
-    0,
-    255,
-    0
-  ],
-  "scan_interval_ms": 50
+  "max_amount_clicks": 0,
+  "scan_interval_ms": 30
 }

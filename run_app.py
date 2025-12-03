@@ -33,7 +33,7 @@ DEBUG = False
 WAIT_REFRESH_ITEM = 0  # 点击货物后的等待时间
 WAIT_CLICK_MAX_AMOUNT = 0  # 点击最大数量按钮后的等待时间
 WAIT_AFTER_BUY = 0  # 购买后的等待时间
-WAIT_AFTER_ESC = 0  # 按ESC后的等待时间
+WAIT_AFTER_ESC = 0.05  # 按ESC后的等待时间
 
 ENABLE_TESSERACT = False
 ENABLE_PADDLEOCR = False
@@ -608,6 +608,8 @@ class Mode1Worker(QtCore.QThread):
                 time.sleep(WAIT_REFRESH_ITEM)
 
     def _click_max_amount(self):
+        if self.cfg.max_amount_clicks == 0:
+            return
         x, y = self.cfg.max_amount_button
         clicks = max(1, int(self.cfg.max_amount_clicks))
         for _ in range(clicks):
